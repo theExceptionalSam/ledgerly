@@ -83,7 +83,7 @@ function verifyOtp(req, res) {
   res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true } });
 }
 
-function resendOtp(req, res) {
+async function resendOtp(req, res) {
   const { email } = req.body;
   const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email.toLowerCase());
   if (!user) return res.status(404).json({ error: 'No account found for this email' });
