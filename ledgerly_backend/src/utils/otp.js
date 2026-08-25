@@ -1,17 +1,11 @@
 const { randomUUID, randomInt, createHash } = require('crypto');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const db = require('../db');
 
 const OTP_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function hashCode(email, code) {
   return createHash('sha256').update(`${email}:${code}`).digest('hex');
@@ -34,10 +28,10 @@ async function issueVerificationCode(tenantId, email) {
 
   console.log(`[OTP] Verification code for ${email}: ${code}`);
 
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+  if (process.env.RESEND_API_KEY) {
     try {
-      await transporter.sendMail({
-        from: `"Ledgerly" <${process.env.GMAIL_USER}>`,
+      await resend.emails.send({
+        from: 'Ledgerly <onboarding@resend.dev>',
         to: email,
         subject: 'Your Ledgerly Verification Code',
         html: `
@@ -51,8 +45,7 @@ async function issueVerificationCode(tenantId, email) {
         `,
       });
     } catch (emailError) {
-      console.error('[Email Error] Failed to send OTP email:', emailError.message);
-      // Don't crash the server, just log the error. The OTP is still printed in the logs above.
+      console.error('[Email Error] Failed to send OTP email via Resend:', emailError.message);
     }
   }
 
