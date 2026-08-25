@@ -24,7 +24,7 @@ const securityHeaders = helmet({
       frameAncestors: ["'none'"],
     },
   },
-  crossOriginResourcePolicy: { policy: 'same-site' },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
   referrerPolicy: { policy: 'no-referrer' },
 });
 

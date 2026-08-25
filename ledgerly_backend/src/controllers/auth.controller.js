@@ -12,7 +12,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
-  sameSite: 'strict',
+  sameSite: isProd ? 'none' : 'strict',
   path: '/api/v1/auth',
   maxAge: 1000 * 60 * 60 * 24 * 30,
 };
