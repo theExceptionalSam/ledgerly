@@ -1,0 +1,49 @@
+const helmet = require('helmet');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',');
+
+const corsMiddleware = cors({
+  origin: (origin, callback) => {
+    // allow same-origin/non-browser requests (no origin header) and configured origins only
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin not permitted by CORS policy'));
+  },
+  credentials: true,
+});
+
+const securityHeaders = helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'same-site' },
+  referrerPolicy: { policy: 'no-referrer' },
+});
+
+// Strict limiter for authentication endpoints — slows down credential stuffing and brute force
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait before trying again.' },
+});
+
+// Looser general limiter for the rest of the API
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+});
+
+module.exports = { corsMiddleware, securityHeaders, authLimiter, apiLimiter };
