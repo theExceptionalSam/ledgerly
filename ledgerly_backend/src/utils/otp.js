@@ -35,20 +35,25 @@ async function issueVerificationCode(tenantId, email) {
   console.log(`[OTP] Verification code for ${email}: ${code}`);
 
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    await transporter.sendMail({
-      from: `"Ledgerly" <${process.env.GMAIL_USER}>`,
-      to: email,
-      subject: 'Your Ledgerly Verification Code',
-      html: `
-        <div style="font-family:sans-serif;max-width:400px;margin:auto">
-          <h2>Verify your email</h2>
-          <p>Your verification code is:</p>
-          <h1 style="letter-spacing:8px;color:#4F46E5">${code}</h1>
-          <p>This code expires in ${OTP_TTL_MINUTES} minutes.</p>
-          <p>If you didn't request this, ignore this email.</p>
-        </div>
-      `,
-    });
+    try {
+      await transporter.sendMail({
+        from: `"Ledgerly" <${process.env.GMAIL_USER}>`,
+        to: email,
+        subject: 'Your Ledgerly Verification Code',
+        html: `
+          <div style="font-family:sans-serif;max-width:400px;margin:auto">
+            <h2>Verify your email</h2>
+            <p>Your verification code is:</p>
+            <h1 style="letter-spacing:8px;color:#4F46E5">${code}</h1>
+            <p>This code expires in ${OTP_TTL_MINUTES} minutes.</p>
+            <p>If you didn't request this, ignore this email.</p>
+          </div>
+        `,
+      });
+    } catch (emailError) {
+      console.error('[Email Error] Failed to send OTP email:', emailError.message);
+      // Don't crash the server, just log the error. The OTP is still printed in the logs above.
+    }
   }
 
   return code;
