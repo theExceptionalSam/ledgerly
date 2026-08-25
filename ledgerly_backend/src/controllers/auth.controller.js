@@ -57,7 +57,7 @@ async function registerSchool(req, res) {
 
   recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'tenant', entityId: tenantId, ipAddress: req.ip });
 
-  const code = issueVerificationCode(tenantId, email.toLowerCase());
+  const code = await issueVerificationCode(tenantId, email.toLowerCase());
   res.status(201).json({
     verificationRequired: true,
     email: email.toLowerCase(),
@@ -88,7 +88,7 @@ function resendOtp(req, res) {
   const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email.toLowerCase());
   if (!user) return res.status(404).json({ error: 'No account found for this email' });
 
-  issueVerificationCode(user.tenant_id, email.toLowerCase());
+  await issueVerificationCode(user.tenant_id, email.toLowerCase());
   res.json({ ok: true });
 }
 
@@ -125,7 +125,7 @@ async function login(req, res) {
   // Issuing a code here invalidates any earlier one, so the user always
   // verifies with the most recently sent code.
   if (!user.email_verified) {
-    const code = issueVerificationCode(user.tenant_id, user.email);
+    const code = await issueVerificationCode(user.tenant_id, user.email);
     return res.status(403).json({
       error: 'Please verify your school email before signing in.',
       verificationRequired: true,
