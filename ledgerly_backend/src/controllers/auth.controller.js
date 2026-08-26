@@ -261,7 +261,7 @@ async function me(req, res) {
   const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id FROM users WHERE id = $1`, [req.user.id]);
   const user = userRows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { rows: tenantRows } = await db.query(`SELECT name, term FROM tenants WHERE id = $1`, [user.tenant_id]);
+  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
   const tenant = tenantRows[0];
   const { rows: termRows } = await db.query(`SELECT id, name FROM terms WHERE tenant_id = $1 AND is_current = 1`, [user.tenant_id]);
   const currentTerm = termRows[0];
