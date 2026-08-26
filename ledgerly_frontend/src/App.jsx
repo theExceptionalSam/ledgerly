@@ -49,7 +49,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/terms" element={
-              <ProtectedRoute roles={["owner"]}>
+              <ProtectedRoute>
                 <Layout><Terms /></Layout>
               </ProtectedRoute>
             } />

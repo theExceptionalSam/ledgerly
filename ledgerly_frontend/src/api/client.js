@@ -117,8 +117,18 @@ async function openPdf(path, retry = true) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return openPdf(path, false);
     onUnauthorized();
+    throw new Error("Session expired. Please sign in again.");
   }
-  if (!res.ok) throw new Error("Could not open PDF");
+  if (!res.ok) {
+    // Read the server's error message instead of a generic "Could not open PDF"
+    let msg = "Could not open PDF";
+    try {
+      const body = await res.text();
+      const parsed = JSON.parse(body);
+      msg = parsed.error || msg;
+    } catch {}
+    throw new Error(msg);
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank");

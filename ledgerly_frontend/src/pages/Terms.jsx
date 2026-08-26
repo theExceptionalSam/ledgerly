@@ -7,6 +7,7 @@ export default function Terms() {
   const [sessions, setSessions] = useState([]);
   const [showAddSession, setShowAddSession] = useState(false);
   const [showAddTerm, setShowAddTerm] = useState(false);
+  const [editingTerm, setEditingTerm] = useState(null);
   const [error, setError] = useState("");
 
   const load = () => {
@@ -105,10 +106,7 @@ export default function Terms() {
                       <span className="term-dates">{t.start_date || "—"} to {t.end_date || "—"}</span>
                     </div>
                     <div className="term-actions">
-                      <button className="link-btn" onClick={() => {
-                        const name = prompt("Edit term name:", t.name);
-                        if (name && name.trim()) editTerm(t.id, { name: name.trim(), startDate: t.start_date || undefined, endDate: t.end_date || undefined });
-                      }}>Edit</button>
+                      <button className="link-btn" onClick={() => setEditingTerm(t)}>Edit</button>
                       {!t.is_current && <button className="link-btn" onClick={() => setCurrentTerm(t.id)}>Set current</button>}
                       <button className="link-btn" style={{ color: "#B3261E" }} onClick={() => deleteTerm(t.id, t.name)}>Delete</button>
                     </div>
@@ -124,6 +122,13 @@ export default function Terms() {
 
       {showAddSession && <AddSessionModal onClose={() => setShowAddSession(false)} onSave={addSession} />}
       {showAddTerm && <AddTermModal sessions={sessions} onClose={() => setShowAddTerm(false)} onSave={addTerm} />}
+      {editingTerm && (
+        <EditTermModal
+          term={editingTerm}
+          onClose={() => setEditingTerm(null)}
+          onSave={async (fields) => { await editTerm(editingTerm.id, fields); setEditingTerm(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -194,6 +199,43 @@ function AddTermModal({ sessions, onClose, onSave }) {
         </label>
         <button className="btn-primary btn-full" disabled={!name || !sessionId || busy} onClick={submit}>
           {busy ? "Saving..." : "Create term"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditTermModal({ term, onClose, onSave }) {
+  const [name, setName] = useState(term.name || "");
+  const [startDate, setStartDate] = useState(term.start_date || "");
+  const [endDate, setEndDate] = useState(term.end_date || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setBusy(true); setError("");
+    try {
+      await onSave({ name: name.trim(), startDate: startDate || undefined, endDate: endDate || undefined });
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Edit term</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        <label>Term name</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <label>Start date (optional)</label>
+        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <label>End date (optional)</label>
+        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        <button className="btn-primary btn-full" disabled={!name.trim() || busy} onClick={submit}>
+          {busy ? "Saving..." : "Save changes"}
         </button>
       </div>
     </div>
