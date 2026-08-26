@@ -38,8 +38,12 @@ async function issueVerificationCode(tenantId, email) {
 
   if (process.env.RESEND_API_KEY) {
     try {
+      // The from address: use RESEND_FROM_EMAIL if set (for verified domains),
+      // otherwise fall back to Resend's shared test address (only works for
+      // sending to the account owner's own email on the free plan).
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'Ledgerly <onboarding@resend.dev>';
       await getResend().emails.send({
-        from: 'Ledgerly <onboarding@resend.dev>',
+        from: fromEmail,
         to: email,
         subject: 'Your Ledgerly Verification Code',
         html: `
