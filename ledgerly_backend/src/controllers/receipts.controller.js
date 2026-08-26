@@ -8,22 +8,23 @@ const { generateReceiptPdf } = require('../utils/receipt-pdf');
 // it instead of creating a duplicate. Receipt numbers are sequential per tenant
 // per calendar year, formatted <XXX>-<YYYY>-<NNNNN>.
 
-function buildReceiptNumber(tenantId, tenantName) {
+async function buildReceiptNumber(tenantId, tenantName) {
   const year = new Date().getFullYear();
   const prefix = (tenantName || 'LED').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'LED';
-  const count = db.prepare(`
+  const { rows } = await db.query(`
     SELECT COUNT(*) AS n FROM receipts
     WHERE tenant_id = ? AND receipt_number LIKE ?
-  `).get(tenantId, `${prefix}-${year}-%`).n;
+  `, [tenantId, `${prefix}-${year}-%`]);
+  const count = rows[0].n;
   const counter = String(count + 1).padStart(5, '0');
   return `${prefix}-${year}-${counter}`;
 }
 
-function issueReceipt(req, res) {
+async function issueReceipt(req, res) {
   const { tenantId, id: userId } = req.user;
   const { paymentId } = req.params;
 
-  const payment = db.prepare(`
+  const { rows: paymentRows } = await db.query(`
     SELECT p.*, s.name AS student_name, s.class AS student_class, s.admission_no,
            fh.name AS fee_head_name, u.name AS recorded_by_name, t.name AS term_name
     FROM payments p
@@ -32,33 +33,35 @@ function issueReceipt(req, res) {
     LEFT JOIN users u ON u.id = p.recorded_by
     LEFT JOIN terms t ON t.id = p.term_id
     WHERE p.id = ? AND p.tenant_id = ?
-  `).get(paymentId, tenantId);
+  `, [paymentId, tenantId]);
+  const payment = paymentRows[0];
 
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.reversed) return res.status(400).json({ error: 'Cannot issue a receipt for a reversed payment' });
 
-  const tenant = db.prepare(`SELECT name FROM tenants WHERE id = ?`).get(tenantId);
+  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = ?`, [tenantId]);
+  const tenant = tenantRows[0];
 
   // Idempotent: if a receipt already exists for this payment, regenerate the
   // PDF from the existing receipt number (no duplicate row, no new number).
-  let receipt = db.prepare(`SELECT * FROM receipts WHERE payment_id = ? AND tenant_id = ?`).get(paymentId, tenantId);
+  const { rows: receiptRows } = await db.query(`SELECT * FROM receipts WHERE payment_id = ? AND tenant_id = ?`, [paymentId, tenantId]);
+  let receipt = receiptRows[0];
 
   if (!receipt) {
     const receiptId = randomUUID();
-    const receiptNumber = buildReceiptNumber(tenantId, tenant.name);
-    const insert = db.transaction(() => {
+    const receiptNumber = await buildReceiptNumber(tenantId, tenant.name);
+    receipt = await db.transaction(async (client) => {
       // Re-check inside the transaction in case of a concurrent insert.
-      const existing = db.prepare(`SELECT * FROM receipts WHERE payment_id = ? AND tenant_id = ?`).get(paymentId, tenantId);
-      if (existing) return existing;
-      db.prepare(`
+      const { rows } = await db.query(`SELECT * FROM receipts WHERE payment_id = ? AND tenant_id = ?`, [paymentId, tenantId], client);
+      if (rows[0]) return rows[0];
+      await db.query(`
         INSERT INTO receipts (id, tenant_id, payment_id, receipt_number, issued_by)
         VALUES (?, ?, ?, ?, ?)
-      `).run(receiptId, tenantId, paymentId, receiptNumber, userId);
+      `, [receiptId, tenantId, paymentId, receiptNumber, userId], client);
       return { id: receiptId, receipt_number: receiptNumber, issued_at: new Date().toISOString() };
     });
-    receipt = insert();
 
-    recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
+    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
   }
 
   // generateReceiptPdf returns a Promise (pdfkit streams asynchronously) — await it.

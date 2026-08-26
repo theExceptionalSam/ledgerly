@@ -5,6 +5,7 @@ const morgan = require('morgan');
 
 const { corsMiddleware, securityHeaders, apiLimiter } = require('./middleware/security');
 const { errorHandler } = require('./middleware/validate');
+const db = require('./db');
 
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/students.routes');
@@ -42,6 +43,15 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
+
+// Wait for the database (schema + migrations) to be ready before accepting
+// requests. This prevents race conditions where an early request hits a
+// half-initialised database.
+db.ready.then(() => {
+  app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
+}).catch((err) => {
+  console.error('[server] Could not start — database initialization failed:', err.message);
+  process.exit(1);
+});
 
 module.exports = app;

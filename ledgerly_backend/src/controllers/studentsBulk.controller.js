@@ -11,7 +11,6 @@ const HEADER_ALIASES = {
   name: ['name', 'student name', 'fullname', 'full name'],
   class: ['class', 'class name'],
   admissionNo: ['admission no', 'admission number', 'admissionno'],
-  feeAmount: ['fee amount', 'fee', 'amount', 'fee for term'],
   guardianContact: ['parent contact', 'guardian contact', 'parent phone', 'guardian phone', 'phone'],
 };
 
@@ -26,7 +25,7 @@ function mapHeaders(headerRow) {
   return map;
 }
 
-function bulkUpload(req, res) {
+async function bulkUpload(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const { tenantId, id: userId } = req.user;
@@ -52,20 +51,18 @@ function bulkUpload(req, res) {
 
   const inserted = [];
   const failed = [];
-  const insertStudent = db.prepare(`
+  const insertSql = `
     INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+  `;
   const limit = Math.min(rows.length - 1, 1000);
 
-  const insertAll = db.transaction(() => {
+  await db.transaction(async (client) => {
     for (let i = 1; i <= limit; i++) {
       const row = rows[i];
       const name = String(row[cols.name] ?? '').trim();
       const klass = String(row[cols.class] ?? '').trim();
       const admissionNo = cols.admissionNo !== undefined ? String(row[cols.admissionNo] ?? '').trim() : '';
-      const feeRaw = cols.feeAmount !== undefined ? row[cols.feeAmount] : 0;
-      const feeAmount = Number(String(feeRaw ?? '').replace(/[₦,\s]/g, '')) || 0;
       const guardianContact = cols.guardianContact !== undefined ? String(row[cols.guardianContact] ?? '').trim() : '';
 
       const rowNumber = i + 1; // 1-based, matching what the user sees in Excel
@@ -75,14 +72,16 @@ function bulkUpload(req, res) {
       }
 
       const id = randomUUID();
-      insertStudent.run(id, tenantId, name.slice(0, 150), klass.slice(0, 60), admissionNo.slice(0, 60) || null, guardianContact.slice(0, 120) || null, userId);
+      await db.query(insertSql, [
+        id, tenantId, name.slice(0, 150), klass.slice(0, 60),
+        admissionNo.slice(0, 60) || null, guardianContact.slice(0, 120) || null, userId
+      ], client);
       inserted.push(id);
     }
   });
-  insertAll();
 
   if (inserted.length > 0) {
-    recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student_bulk', ipAddress: req.ip, metadata: { imported: inserted.length, failed: failed.length } });
+    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student_bulk', ipAddress: req.ip, metadata: { imported: inserted.length, failed: failed.length } });
   }
   res.status(201).json({ imported: inserted.length, failed });
 }

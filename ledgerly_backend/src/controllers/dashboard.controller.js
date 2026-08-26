@@ -4,12 +4,13 @@ const db = require('../db');
 // (expected minus discount) instead of the deprecated students.fee_amount column.
 // termId comes from ?termId= and defaults to the tenant's current term.
 
-function getDashboard(req, res) {
+async function getDashboard(req, res) {
   const { tenantId } = req.user;
 
   let termId = req.query.termId;
   if (!termId) {
-    const current = db.prepare(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`).get(tenantId);
+    const { rows } = await db.query(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`, [tenantId]);
+    const current = rows[0];
     termId = current ? current.id : null;
   }
   if (!termId) {
@@ -17,27 +18,29 @@ function getDashboard(req, res) {
   }
 
   // Expected = sum of (expected_amount - discount_amount) across all assignments for this term.
-  const feeTotals = db.prepare(`
+  const { rows: feeRows } = await db.query(`
     SELECT
       COALESCE(SUM(expected_amount - discount_amount), 0) AS expected,
       COUNT(DISTINCT student_id) AS student_count
     FROM student_fee_assignments
     WHERE tenant_id = ? AND term_id = ?
-  `).get(tenantId, termId);
+  `, [tenantId, termId]);
+  const feeTotals = feeRows[0];
 
   const expected = Number(feeTotals.expected) || 0;
   const studentCount = feeTotals.student_count || 0;
 
   // Collected = sum of non-reversed payments in this term.
-  const collected = db.prepare(`
+  const { rows: collectedRows } = await db.query(`
     SELECT COALESCE(SUM(p.amount), 0) AS collected
     FROM payments p
     JOIN students s ON s.id = p.student_id
     WHERE p.tenant_id = ? AND p.term_id = ? AND p.reversed = 0 AND s.status = 'active'
-  `).get(tenantId, termId).collected;
+  `, [tenantId, termId]);
+  const collected = collectedRows[0].collected;
 
   // Per-student status counts for this term.
-  const perStudent = db.prepare(`
+  const { rows: perStudent } = await db.query(`
     SELECT sfa.student_id,
       SUM(sfa.expected_amount - sfa.discount_amount) AS expected,
       (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
@@ -45,7 +48,7 @@ function getDashboard(req, res) {
     FROM student_fee_assignments sfa
     WHERE sfa.tenant_id = ? AND sfa.term_id = ?
     GROUP BY sfa.student_id
-  `).all(tenantId, termId);
+  `, [tenantId, termId]);
 
   let fullyPaid = 0, partial = 0, outstanding = 0;
   for (const s of perStudent) {
@@ -57,8 +60,10 @@ function getDashboard(req, res) {
     else outstanding++;
   }
 
-  const otherIncome = db.prepare(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'income' AND reversed = 0`).get(tenantId).v;
-  const expenditure = db.prepare(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'expense' AND reversed = 0`).get(tenantId).v;
+  const { rows: incomeRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'income' AND reversed = 0`, [tenantId]);
+  const otherIncome = incomeRows[0].v;
+  const { rows: expenseRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'expense' AND reversed = 0`, [tenantId]);
+  const expenditure = expenseRows[0].v;
 
   res.json({
     expected,

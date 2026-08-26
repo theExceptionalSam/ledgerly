@@ -9,6 +9,6 @@ CREATE TABLE IF NOT EXISTS receipts (
   payment_id TEXT NOT NULL UNIQUE REFERENCES payments(id) ON DELETE CASCADE,
   receipt_number TEXT NOT NULL,
   issued_by TEXT NOT NULL REFERENCES users(id),
-  issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, receipt_number)
 );

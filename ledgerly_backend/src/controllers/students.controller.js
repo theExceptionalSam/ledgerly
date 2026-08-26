@@ -7,19 +7,24 @@ const { recordAudit } = require('../utils/audit');
 //
 // Phase 2: billing is now per-term, per-fee-head. List/detail/dashboard calls accept ?termId=
 // and default to the tenant's current term when omitted, so callers always get a sensible scope.
+//
+// Postgres migration note: db.query() is async (pg) and auto-converts ? placeholders to $N,
+// so the existing SQL strings are kept as-is. Every function that touches the db is now async,
+// and recordAudit() is awaited.
 
-function resolveTermId(tenantId, termId) {
+async function resolveTermId(tenantId, termId) {
   if (termId) return termId;
-  const current = db.prepare(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`).get(tenantId);
+  const { rows } = await db.query(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`, [tenantId]);
+  const current = rows[0];
   return current ? current.id : null;
 }
 
-function listStudents(req, res) {
+async function listStudents(req, res) {
   const { tenantId } = req.user;
-  const termId = resolveTermId(tenantId, req.query.termId);
+  const termId = await resolveTermId(tenantId, req.query.termId);
   if (!termId) return res.json({ students: [] });
 
-  const students = db.prepare(`
+  const { rows: students } = await db.query(`
     SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact,
       COALESCE((SELECT SUM(sfa.expected_amount - sfa.discount_amount)
                 FROM student_fee_assignments sfa
@@ -30,7 +35,7 @@ function listStudents(req, res) {
     FROM students s
     WHERE s.tenant_id = ? AND s.status = 'active'
     ORDER BY s.name ASC
-  `).all(termId, termId, tenantId);
+  `, [termId, termId, tenantId]);
 
   const withStatus = students.map(s => {
     const expected = Number(s.expected) || 0;
@@ -46,77 +51,82 @@ function listStudents(req, res) {
   res.json({ students: withStatus });
 }
 
-function createStudent(req, res) {
+async function createStudent(req, res) {
   const { tenantId, id: userId } = req.user;
   const { name, class: klass, admissionNo, guardianContact } = req.body;
 
   const id = randomUUID();
-  db.prepare(`
+  await db.query(`
     INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, tenantId, name, klass, admissionNo || null, guardianContact || null, userId);
+  `, [id, tenantId, name, klass, admissionNo || null, guardianContact || null, userId]);
 
-  recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip });
+  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip });
   res.status(201).json({ id });
 }
 
-function updateStudent(req, res) {
+async function updateStudent(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id } = req.params;
   const { name, class: klass, admissionNo, guardianContact } = req.body;
 
-  const existing = db.prepare(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+  const { rows } = await db.query(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  const existing = rows[0];
   if (!existing) return res.status(404).json({ error: 'Student not found' });
 
-  db.prepare(`
+  await db.query(`
     UPDATE students SET name = ?, class = ?, admission_no = ?, guardian_contact = ?
     WHERE id = ? AND tenant_id = ?
-  `).run(name, klass, admissionNo || null, guardianContact || null, id, tenantId);
+  `, [name, klass, admissionNo || null, guardianContact || null, id, tenantId]);
 
-  recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student', entityId: id, ipAddress: req.ip });
+  await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student', entityId: id, ipAddress: req.ip });
   res.json({ ok: true });
 }
 
 // Soft delete only — financial history must never be hard-deleted for audit integrity
-function archiveStudent(req, res) {
+async function archiveStudent(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id } = req.params;
 
-  const existing = db.prepare(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+  const { rows } = await db.query(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  const existing = rows[0];
   if (!existing) return res.status(404).json({ error: 'Student not found' });
 
-  db.prepare(`UPDATE students SET status = 'archived' WHERE id = ? AND tenant_id = ?`).run(id, tenantId);
-  recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student', entityId: id, ipAddress: req.ip });
+  await db.query(`UPDATE students SET status = 'archived' WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student', entityId: id, ipAddress: req.ip });
   res.json({ ok: true });
 }
 
-function getStudentDetail(req, res) {
+async function getStudentDetail(req, res) {
   const { tenantId } = req.user;
   const { id } = req.params;
-  const termId = resolveTermId(tenantId, req.query.termId);
+  const termId = await resolveTermId(tenantId, req.query.termId);
 
-  const student = db.prepare(`SELECT id, name, class, admission_no, guardian_contact, status, created_at FROM students WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+  const { rows: studentRows } = await db.query(`SELECT id, name, class, admission_no, guardian_contact, status, created_at FROM students WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  const student = studentRows[0];
   if (!student) return res.status(404).json({ error: 'Student not found' });
 
-  const payments = termId
-    ? db.prepare(`
+  let payments = [];
+  if (termId) {
+    const { rows: paymentRows } = await db.query(`
         SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.fee_head_id, p.term_id, p.created_at, fh.name AS fee_head_name
         FROM payments p LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
         WHERE p.student_id = ? AND p.tenant_id = ? AND p.term_id = ? AND p.reversed = 0
         ORDER BY p.paid_on DESC
-      `).all(id, tenantId, termId)
-    : [];
+    `, [id, tenantId, termId]);
+    payments = paymentRows;
+  }
 
-  const fees = termId ? getStudentFeesInternal(tenantId, id, termId) : [];
+  const fees = termId ? await getStudentFeesInternal(tenantId, id, termId) : [];
 
-  recordAudit({ tenantId, actorUserId: req.user.id, action: 'access', entityType: 'student', entityId: id, ipAddress: req.ip });
+  await recordAudit({ tenantId, actorUserId: req.user.id, action: 'access', entityType: 'student', entityId: id, ipAddress: req.ip });
   res.json({ student, payments, fees, termId });
 }
 
 // --- Phase 2: itemised fee assignments ---
 
-function getStudentFeesInternal(tenantId, studentId, termId) {
-  return db.prepare(`
+async function getStudentFeesInternal(tenantId, studentId, termId) {
+  const { rows } = await db.query(`
     SELECT sfa.id, sfa.fee_head_id, sfa.term_id, sfa.expected_amount, sfa.discount_amount,
            sfa.discount_reason, fh.name AS fee_head_name,
            COALESCE((SELECT SUM(p.amount) FROM payments p
@@ -126,75 +136,82 @@ function getStudentFeesInternal(tenantId, studentId, termId) {
     JOIN fee_heads fh ON fh.id = sfa.fee_head_id
     WHERE sfa.tenant_id = ? AND sfa.student_id = ? AND sfa.term_id = ?
     ORDER BY fh.name
-  `).all(tenantId, studentId, termId).map(a => ({
+  `, [tenantId, studentId, termId]);
+  return rows.map(a => ({
     ...a,
     outstanding: Math.max(a.expected_amount - a.discount_amount - a.paid, 0),
   }));
 }
 
-function getStudentFees(req, res) {
+async function getStudentFees(req, res) {
   const { tenantId } = req.user;
   const { id } = req.params;
-  const termId = resolveTermId(tenantId, req.query.termId);
+  const termId = await resolveTermId(tenantId, req.query.termId);
   if (!termId) return res.json({ fees: [] });
 
-  const student = db.prepare(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+  const { rows } = await db.query(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  const student = rows[0];
   if (!student) return res.status(404).json({ error: 'Student not found' });
 
-  res.json({ fees: getStudentFeesInternal(tenantId, id, termId) });
+  res.json({ fees: await getStudentFeesInternal(tenantId, id, termId) });
 }
 
-function assignStudentFee(req, res) {
+async function assignStudentFee(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id: studentId } = req.params;
   const { feeHeadId, termId, expectedAmount } = req.body;
 
-  const student = db.prepare(`SELECT id FROM students WHERE id = ? AND tenant_id = ? AND status = 'active'`).get(studentId, tenantId);
+  const { rows: studentRows } = await db.query(`SELECT id FROM students WHERE id = ? AND tenant_id = ? AND status = 'active'`, [studentId, tenantId]);
+  const student = studentRows[0];
   if (!student) return res.status(404).json({ error: 'Student not found' });
 
-  const head = db.prepare(`SELECT id FROM fee_heads WHERE id = ? AND tenant_id = ? AND is_active = 1`).get(feeHeadId, tenantId);
+  const { rows: headRows } = await db.query(`SELECT id FROM fee_heads WHERE id = ? AND tenant_id = ? AND is_active = 1`, [feeHeadId, tenantId]);
+  const head = headRows[0];
   if (!head) return res.status(404).json({ error: 'Fee head not found' });
 
-  const term = db.prepare(`SELECT id FROM terms WHERE id = ? AND tenant_id = ?`).get(termId, tenantId);
+  const { rows: termRows } = await db.query(`SELECT id FROM terms WHERE id = ? AND tenant_id = ?`, [termId, tenantId]);
+  const term = termRows[0];
   if (!term) return res.status(404).json({ error: 'Term not found' });
 
   // Upsert: insert, or update expected_amount if the (student, head, term) row already exists.
-  const existing = db.prepare(`SELECT id FROM student_fee_assignments WHERE student_id = ? AND fee_head_id = ? AND term_id = ?`).get(studentId, feeHeadId, termId);
+  const { rows: existingRows } = await db.query(`SELECT id FROM student_fee_assignments WHERE student_id = ? AND fee_head_id = ? AND term_id = ?`, [studentId, feeHeadId, termId]);
+  const existing = existingRows[0];
   let assignmentId;
   if (existing) {
-    db.prepare(`UPDATE student_fee_assignments SET expected_amount = ? WHERE id = ?`).run(expectedAmount, existing.id);
+    await db.query(`UPDATE student_fee_assignments SET expected_amount = ? WHERE id = ?`, [expectedAmount, existing.id]);
     assignmentId = existing.id;
   } else {
     assignmentId = randomUUID();
-    db.prepare(`
+    await db.query(`
       INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(assignmentId, tenantId, studentId, feeHeadId, termId, expectedAmount, userId);
+    `, [assignmentId, tenantId, studentId, feeHeadId, termId, expectedAmount, userId]);
   }
 
-  recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'fee_assignment', entityId: assignmentId, ipAddress: req.ip, metadata: { studentId, feeHeadId, termId, expectedAmount } });
+  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'fee_assignment', entityId: assignmentId, ipAddress: req.ip, metadata: { studentId, feeHeadId, termId, expectedAmount } });
   res.status(201).json({ id: assignmentId });
 }
 
-function applyDiscount(req, res) {
+async function applyDiscount(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id: studentId, assignmentId } = req.params;
   const { discountAmount, discountReason } = req.body;
 
-  const assignment = db.prepare(`
+  const { rows: assignmentRows } = await db.query(`
     SELECT sfa.id FROM student_fee_assignments sfa
     JOIN students s ON s.id = sfa.student_id
     WHERE sfa.id = ? AND sfa.student_id = ? AND sfa.tenant_id = ?
-  `).get(assignmentId, studentId, tenantId);
+  `, [assignmentId, studentId, tenantId]);
+  const assignment = assignmentRows[0];
   if (!assignment) return res.status(404).json({ error: 'Fee assignment not found' });
 
-  db.prepare(`
+  await db.query(`
     UPDATE student_fee_assignments
     SET discount_amount = ?, discount_reason = ?, discount_approved_by = ?
     WHERE id = ?
-  `).run(discountAmount, discountReason || null, userId, assignmentId);
+  `, [discountAmount, discountReason || null, userId, assignmentId]);
 
-  recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'discount', entityId: assignmentId, ipAddress: req.ip, metadata: { studentId, discountAmount, discountReason } });
+  await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'discount', entityId: assignmentId, ipAddress: req.ip, metadata: { studentId, discountAmount, discountReason } });
   res.json({ ok: true });
 }
 

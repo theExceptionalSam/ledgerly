@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS terms (
   start_date TEXT,
   end_date TEXT,
   is_current INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id);
@@ -16,4 +16,4 @@ CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id);
 -- Backfill: every existing tenant gets one term named after their current
 -- tenants.term value, marked current, so existing data has somewhere to attach.
 INSERT INTO terms (id, tenant_id, name, is_current)
-SELECT lower(hex(randomblob(16))), id, term, 1 FROM tenants;
+SELECT gen_random_uuid()::text, id, term, 1 FROM tenants;

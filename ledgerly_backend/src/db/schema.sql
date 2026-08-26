@@ -1,8 +1,6 @@
--- School Fee & Finance Tracker — schema
--- SQLite for local/dev portability. In production, port this 1:1 to PostgreSQL
--- and add row-level security policies keyed on tenant_id.
-
-PRAGMA foreign_keys = ON;
+-- Ledgerly — PostgreSQL schema (base snapshot, pre-v2-upgrade)
+-- Migrated from SQLite. Timestamps are TIMESTAMPTZ. INTEGER 0/1 is used for
+-- boolean-like columns to match controller code (checks against 0 and 1).
 
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -10,7 +8,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   phone TEXT NOT NULL,
   term TEXT NOT NULL DEFAULT 'First Term',
   data_protection_contact TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -25,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   failed_login_count INTEGER NOT NULL DEFAULT 0,
   locked_until TEXT,
   last_login_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, email)
 );
 
@@ -37,7 +35,7 @@ CREATE TABLE IF NOT EXISTS verification_codes (
   expires_at TEXT NOT NULL,
   consumed_at TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -46,7 +44,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   token_hash TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   revoked_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS students (
@@ -61,7 +59,7 @@ CREATE TABLE IF NOT EXISTS students (
   fee_amount REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
   created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS payments (
@@ -75,7 +73,7 @@ CREATE TABLE IF NOT EXISTS payments (
   recorded_by TEXT NOT NULL REFERENCES users(id),
   idempotency_key TEXT,
   reversed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, idempotency_key)
 );
 
@@ -89,7 +87,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   occurred_on TEXT NOT NULL,
   recorded_by TEXT NOT NULL REFERENCES users(id),
   reversed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -101,7 +99,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   entity_id TEXT,
   ip_address TEXT,
   metadata TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_students_tenant ON students(tenant_id);

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS fee_heads (
   tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS student_fee_assignments (
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS student_fee_assignments (
   discount_reason TEXT,
   discount_approved_by TEXT REFERENCES users(id),
   created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (student_id, fee_head_id, term_id)
 );
 
@@ -29,18 +29,18 @@ CREATE INDEX IF NOT EXISTS idx_sfa_student ON student_fee_assignments(student_id
 
 -- Seed a default fee head catalogue per tenant
 INSERT INTO fee_heads (id, tenant_id, name)
-SELECT lower(hex(randomblob(16))), id, head
-FROM tenants, (
+SELECT gen_random_uuid()::text, t.id, h.head
+FROM tenants t
+CROSS JOIN (
   SELECT 'Tuition' AS head UNION ALL SELECT 'Boarding' UNION ALL SELECT 'Feeding'
   UNION ALL SELECT 'Development Levy' UNION ALL SELECT 'Exam Fees'
   UNION ALL SELECT 'Sports' UNION ALL SELECT 'Uniform'
-);
-
+) h;
 -- Backfill: migrate each student's old single fee_amount into a "Tuition" assignment
 -- on the tenant's current term, so no existing billing data is lost.
 INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, created_by)
 SELECT
-  lower(hex(randomblob(16))),
+  gen_random_uuid()::text,
   s.tenant_id,
   s.id,
   (SELECT id FROM fee_heads WHERE tenant_id = s.tenant_id AND name = 'Tuition' LIMIT 1),

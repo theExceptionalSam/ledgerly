@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS reminders (
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed')),
   provider_message_id TEXT,
   sent_by TEXT REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS tenant_messaging_settings (
