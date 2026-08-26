@@ -213,7 +213,7 @@ async function forgotPassword(req, res) {
 }
 
 async function resetPassword(req, res) {
-  const { email, token, newPassword } = req.body;
+  const { email, token, password } = req.body;
   const tokenHash = hashRefreshToken(token);
   const { rows } = await db.query(`
     SELECT * FROM verification_codes
@@ -229,7 +229,7 @@ async function resetPassword(req, res) {
   const user = userRows[0];
   if (!user) return res.status(400).json({ error: 'Invalid or expired reset token' });
 
-  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const passwordHash = await bcrypt.hash(password, 12);
   await db.transaction(async (client) => {
     await db.query(`UPDATE users SET password_hash = $1, failed_login_count = 0, locked_until = NULL WHERE id = $2`, [passwordHash, user.id], client);
     await db.query(`UPDATE verification_codes SET consumed_at = now() WHERE id = $1`, [record.id], client);

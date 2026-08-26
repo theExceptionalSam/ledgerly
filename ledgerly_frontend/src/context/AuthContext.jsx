@@ -75,8 +75,8 @@ export function AuthProvider({ children }) {
     return api.post("/auth/forgot-password", { email });
   };
 
-  const resetPassword = async (email, token, newPassword) => {
-    return api.post("/auth/reset-password", { email, token, newPassword });
+  const resetPassword = async (email, token, password) => {
+    return api.post("/auth/reset-password", { email, token, password });
   };
 
   const logout = async () => {
