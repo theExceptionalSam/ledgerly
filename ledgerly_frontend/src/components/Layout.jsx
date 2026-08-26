@@ -1,6 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { TermProvider } from "../context/TermContext";
 
 export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
@@ -35,15 +34,16 @@ export default function Layout({ children }) {
             <NavLink to="/fee-heads" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Fee Heads</NavLink>
             <NavLink to="/terms" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Sessions & Terms</NavLink>
             {user.role === "owner" && (
+              <NavLink to="/users" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Users</NavLink>
+            )}
+            {user.role === "owner" && (
               <NavLink to="/audit-log" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Audit Log</NavLink>
             )}
           </nav>
         )}
       </header>
       <main className="app-main">
-        <TermProvider>
-          {children}
-        </TermProvider>
+        {children}
       </main>
     </div>
   );

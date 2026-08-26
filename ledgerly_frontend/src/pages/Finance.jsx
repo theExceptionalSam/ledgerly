@@ -52,6 +52,7 @@ export default function Finance() {
           ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {canManage && <button className="btn-primary" onClick={() => api.download(`/transactions/export?termId=${selectedTermId}`, "transactions.csv")}>Export CSV</button>}
           {canManage && <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>}
         </div>
       </div>

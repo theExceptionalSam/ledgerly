@@ -43,6 +43,7 @@ export default function Login() {
         <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         <button type="submit" className="btn-primary" disabled={busy}>{busy ? "Signing in..." : "Sign in"}</button>
         <div className="auth-switch">No account yet? <Link to="/register">Register your school</Link></div>
+        <div className="auth-switch"><Link to="/forgot-password">Forgot password?</Link></div>
       </form>
     </div>
   );

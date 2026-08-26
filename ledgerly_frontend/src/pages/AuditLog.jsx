@@ -88,10 +88,20 @@ function formatDate(iso) {
 export default function AuditLog() {
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState("");
+  const [limit, setLimit] = useState(100);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    api.get("/audit-logs").then((d) => setLogs(d.logs)).catch((e) => setError(e.message));
-  }, []);
+  const load = (newLimit) => {
+    setLoading(true);
+    api.get(`/audit-logs?limit=${newLimit}`).then((d) => {
+      setLogs(d.logs);
+      setLimit(newLimit);
+    }).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(100); }, []);
+
+  const loadMore = () => load(limit + 200);
 
   return (
     <div>
@@ -131,6 +141,13 @@ export default function AuditLog() {
           );
         })}
       </div>
+      {logs.length >= limit && (
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <button className="btn-primary" onClick={loadMore} disabled={loading}>
+            {loading ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

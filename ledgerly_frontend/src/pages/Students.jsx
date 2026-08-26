@@ -60,6 +60,7 @@ export default function Students() {
     paid: students.filter((s) => s.status === "paid").length,
     partial: students.filter((s) => s.status === "partial").length,
     outstanding: students.filter((s) => s.status === "outstanding").length,
+    unset: students.filter((s) => s.status === "unset").length,
   };
 
   const filtered = students.filter((s) => {
@@ -104,20 +105,6 @@ export default function Students() {
     load();
   };
 
-  const recordPayments = async (studentId, lines, payment) => {
-    for (const line of lines) {
-      await api.post("/payments", {
-        studentId, amount: line.amount, method: payment.method, note: payment.note,
-        paidOn: payment.paidOn, feeHeadId: line.feeHeadId, termId: selectedTermId,
-        idempotencyKey: `${studentId}-${Date.now()}-${line.feeHeadId}`,
-      });
-    }
-    setPayFor(null);
-    load();
-    if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
-    return lines.map((l) => ({ ...l }));
-  };
-
   const assignFee = async (studentId, feeHeadId, amount) => {
     await api.post(`/students/${studentId}/fees`, { feeHeadId, termId: selectedTermId, expectedAmount: amount });
     if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
@@ -156,6 +143,7 @@ export default function Students() {
             </div>
             {canEdit && (
               <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn-primary" onClick={() => api.download(`/students/export?termId=${selectedTermId}`, "students.csv")}>Export CSV</button>
                 <button className="btn-primary" onClick={() => setShowUpload(true)}>Upload Excel</button>
                 <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
               </div>
@@ -177,9 +165,9 @@ export default function Students() {
                 Select all
               </label>
             )}
-            {["all", "paid", "partial", "outstanding"].map((f) => (
+            {["all", "paid", "partial", "outstanding", "unset"].map((f) => (
               <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
-                {f === "all" ? "All" : statusMeta[f].label}
+                {f === "all" ? "All" : f === "unset" ? "No fee set" : statusMeta[f].label}
                 <span className="chip-count">{counts[f]}</span>
               </button>
             ))}
@@ -276,8 +264,8 @@ export default function Students() {
         <PaymentModal
           student={students.find((s) => s.id === payFor)}
           fees={detail?.fees || []}
+          termId={selectedTermId}
           onClose={() => setPayFor(null)}
-          onSave={(lines, payment) => recordPayments(payFor, lines, payment)}
           onReceipt={openReceipt}
         />
       )}
@@ -494,7 +482,7 @@ function UploadModal({ onClose, onDone }) {
   );
 }
 
-function PaymentModal({ student, fees, onClose, onSave, onReceipt }) {
+function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
   const [lines, setLines] = useState(() => {
     // Default: one line for the fee head with the largest outstanding balance.
     const withOutstanding = fees.filter((f) => f.outstanding > 0);
@@ -525,11 +513,15 @@ function PaymentModal({ student, fees, onClose, onSave, onReceipt }) {
     setBusy(true); setError("");
     try {
       const ids = [];
+      // Generate one stable idempotency key per payment action (not per retry).
+      // If the user clicks Save again after a timeout, the same key is reused
+      // and the server returns the original payment instead of creating a duplicate.
+      const actionId = crypto.randomUUID();
       for (const line of valid) {
         const r = await api.post("/payments", {
           studentId: student.id, amount: Number(line.amount), method, note,
-          paidOn: date, feeHeadId: line.feeHeadId, termId: undefined,
-          idempotencyKey: `${student.id}-${Date.now()}-${line.feeHeadId}`,
+          paidOn: date, feeHeadId: line.feeHeadId, termId,
+          idempotencyKey: `${student.id}-${actionId}-${line.feeHeadId}`,
         });
         ids.push(r.id);
       }

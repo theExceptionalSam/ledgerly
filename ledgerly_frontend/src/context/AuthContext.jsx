@@ -40,11 +40,8 @@ export function AuthProvider({ children }) {
       const data = await api.post("/auth/login", { email, password });
       setAccessToken(data.accessToken);
       setUser(data.user);
-      // Fetch the school name right after login
-      try {
-        const me = await api.get("/auth/me");
-        setSchoolName(me.tenant?.name || "");
-      } catch {}
+      // Backend now includes schoolName in the login response — no extra /me call needed.
+      setSchoolName(data.schoolName || "");
       return data.user;
     } catch (err) {
       if (err.status === 403 && err.payload?.verificationRequired) {
@@ -57,8 +54,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Registration no longer returns a session — the school email must be
-  // verified with an OTP first. verifyOtp issues the first session.
   const registerSchool = async (fields) => {
     const { confirmPassword, ...payload } = fields;
     return api.post("/auth/register-school", payload);
@@ -68,16 +63,20 @@ export function AuthProvider({ children }) {
     const data = await api.post("/auth/verify-otp", { email, code });
     setAccessToken(data.accessToken);
     setUser(data.user);
-    // Fetch the school name after first verification
-    try {
-      const me = await api.get("/auth/me");
-      setSchoolName(me.tenant?.name || "");
-    } catch {}
+    setSchoolName(data.schoolName || "");
     return data.user;
   };
 
   const resendOtp = async (email) => {
     return api.post("/auth/resend-otp", { email });
+  };
+
+  const forgotPassword = async (email) => {
+    return api.post("/auth/forgot-password", { email });
+  };
+
+  const resetPassword = async (email, token, newPassword) => {
+    return api.post("/auth/reset-password", { email, token, newPassword });
   };
 
   const logout = async () => {
@@ -86,7 +85,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, schoolName, initializing, login, registerSchool, verifyOtp, resendOtp, logout }}>
+    <AuthContext.Provider value={{ user, setUser, schoolName, initializing, login, registerSchool, verifyOtp, resendOtp, forgotPassword, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );
