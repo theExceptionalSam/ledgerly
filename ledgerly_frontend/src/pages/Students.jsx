@@ -53,19 +53,19 @@ export default function Students() {
     api.get(`/students/${expanded}?termId=${selectedTermId}`).then(setDetail).catch((e) => setError(e.message));
   }, [expanded, selectedTermId]);
 
-  // Counts per status — computed from the full students list (before search
-  // filtering) so the chips always show the true totals for this term.
+  // Apply class filter first, then compute counts from the class-filtered list
+  // so the chips show the breakdown for the selected class (or all classes).
+  const classFiltered = classFilter === "all" ? students : students.filter((s) => s.class === classFilter);
   const counts = {
-    all: students.length,
-    paid: students.filter((s) => s.status === "paid").length,
-    partial: students.filter((s) => s.status === "partial").length,
-    outstanding: students.filter((s) => s.status === "outstanding").length,
-    unset: students.filter((s) => s.status === "unset").length,
+    all: classFiltered.length,
+    paid: classFiltered.filter((s) => s.status === "paid").length,
+    partial: classFiltered.filter((s) => s.status === "partial").length,
+    outstanding: classFiltered.filter((s) => s.status === "outstanding").length,
+    unset: classFiltered.filter((s) => s.status === "unset").length,
   };
 
-  const filtered = students.filter((s) => {
+  const filtered = classFiltered.filter((s) => {
     if (filter !== "all" && s.status !== filter) return false;
-    if (classFilter !== "all" && s.class !== classFilter) return false;
     if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });

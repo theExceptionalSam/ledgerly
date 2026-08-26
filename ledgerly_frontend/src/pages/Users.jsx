@@ -86,9 +86,17 @@ function AddUserModal({ onClose, onDone }) {
       await api.post("/users", { name, email, password, role });
       onDone();
       onClose();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+    } catch (err) {
+      // Show validation details if available (e.g. password too short)
+      if (err.details && err.details.length > 0) {
+        setError(err.details.map((d) => d.message).join(" · "));
+      } else {
+        setError(err.message);
+      }
+    } finally { setBusy(false); }
   };
+
+  const pwValid = password.length >= 10 && /[A-Z]/.test(password) && /[0-9]/.test(password);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -104,14 +112,16 @@ function AddUserModal({ onClose, onDone }) {
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <label>Temporary password</label>
         <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        <div className="field-hint">At least 10 characters, with an uppercase letter and a number. The user can change this after signing in.</div>
+        <div className="field-hint" style={{ color: pwValid ? "#1B7A43" : "#6B6E72" }}>
+          {pwValid ? "✓ " : ""}At least 10 characters, with an uppercase letter and a number.
+        </div>
         <label>Role</label>
         <select value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="bursar">Bursar</option>
           <option value="accountant">Accountant</option>
           <option value="assistant">Assistant</option>
         </select>
-        <button type="submit" className="btn-primary btn-full" disabled={busy}>{busy ? "Creating..." : "Create account"}</button>
+        <button type="submit" className="btn-primary btn-full" disabled={busy || !pwValid || !name || !email}>{busy ? "Creating..." : "Create account"}</button>
       </form>
     </div>
   );
