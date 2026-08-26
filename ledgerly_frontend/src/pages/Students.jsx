@@ -231,7 +231,7 @@ export default function Students() {
                               <div className="payment-history-title">Payment history</div>
                               {detail.payments.map((p) => (
                                 <div key={p.id} className="payment-history-row">
-                                  <span>{p.paid_on} · {p.fee_head_name || "General"}{p.note ? " · " + p.note : ""}</span>
+                                  <span>{p.paid_on} · {p.fee_head_name || "General"}{p.recorded_by_name ? " · by " + p.recorded_by_name : ""}{p.note ? " · " + p.note : ""}</span>
                                   <span className="payment-history-right">
                                     {naira(p.amount)}
                                     <button className="link-btn" onClick={() => openReceipt(p.id)}>Receipt</button>

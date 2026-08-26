@@ -26,7 +26,11 @@ function describe(entry) {
     case "delete/student": title = "Archived a student"; break;
     case "delete/student_bulk": title = `Archived ${m.archived ?? 0} student(s)`; break;
     case "create/student_bulk": title = `Bulk imported ${m.imported ?? 0} student(s)`; break;
-    case "create/payment": title = m.amount != null ? `Recorded a ${naira(m.amount)} payment` : "Recorded a payment"; break;
+    case "create/payment":
+      title = m.studentName
+        ? `Recorded ${naira(m.amount)} ${m.feeHeadName || ''} payment for ${m.studentName}`
+        : (m.amount != null ? `Recorded a ${naira(m.amount)} payment` : "Recorded a payment");
+      break;
     case "update/payment": title = m.reversed ? `Reversed a payment${m.reason ? " — " + m.reason : ""}` : "Updated a payment"; break;
     case "create/fee_assignment": title = m.expectedAmount != null ? `Assigned a fee of ${naira(m.expectedAmount)} to a student` : "Assigned a fee to a student"; break;
     case "update/discount": title = m.discountAmount != null ? `Approved a ${naira(m.discountAmount)} discount${m.discountReason ? " (" + m.discountReason + ")" : ""}` : "Approved a discount on a fee"; break;
@@ -39,8 +43,16 @@ function describe(entry) {
     case "create/session": title = m.name ? `Created session "${m.name}"` : "Created a session"; break;
     case "update/session": title = m.setCurrent ? "Switched the current session" : (m.name ? "Renamed a session" : "Updated a session"); break;
     case "delete/session": title = "Deleted a session"; break;
-    case "create/transaction": title = "Added an income or expenditure entry"; break;
-    case "delete/transaction": title = "Reversed an income or expenditure entry"; break;
+    case "create/transaction":
+      title = m.type && m.category
+        ? `Added ${m.type === 'income' ? 'income' : 'expenditure'}: ${m.category}${m.amount != null ? ` (${naira(m.amount)})` : ''}`
+        : "Added an income or expenditure entry";
+      break;
+    case "delete/transaction":
+      title = m.type && m.category
+        ? `Reversed ${m.type === 'income' ? 'income' : 'expenditure'}: ${m.category}${m.amount != null ? ` (${naira(m.amount)})` : ''}`
+        : "Reversed an income or expenditure entry";
+      break;
     case "create/receipt": title = m.receiptNumber ? `Issued receipt ${m.receiptNumber}` : "Issued a receipt"; break;
     case "create/tenant": title = "Registered the school account"; break;
     case "login/user": title = "Signed in"; break;

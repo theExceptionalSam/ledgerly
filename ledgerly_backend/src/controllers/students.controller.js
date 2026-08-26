@@ -134,8 +134,10 @@ async function getStudentDetail(req, res) {
   let payments = [];
   if (termId) {
     const { rows: paymentRows } = await db.query(`
-        SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.fee_head_id, p.term_id, p.created_at, fh.name AS fee_head_name
-        FROM payments p LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+        SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.fee_head_id, p.term_id, p.created_at, fh.name AS fee_head_name, u.name AS recorded_by_name
+        FROM payments p
+        LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+        LEFT JOIN users u ON u.id = p.recorded_by
         WHERE p.student_id = $1 AND p.tenant_id = $2 AND p.term_id = $3 AND p.reversed = 0
         ORDER BY p.paid_on DESC
     `, [id, tenantId, termId]);

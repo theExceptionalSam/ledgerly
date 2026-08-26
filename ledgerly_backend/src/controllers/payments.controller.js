@@ -20,11 +20,11 @@ async function recordPayment(req, res) {
     return res.status(400).json({ error: 'feeHeadId is required — every payment must be recorded against a specific fee head' });
   }
 
-  const { rows: studentRows } = await db.query(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2`, [studentId, tenantId]);
+  const { rows: studentRows } = await db.query(`SELECT id, name FROM students WHERE id = $1 AND tenant_id = $2`, [studentId, tenantId]);
   const student = studentRows[0];
   if (!student) return res.status(404).json({ error: 'Student not found' });
 
-  const { rows: headRows } = await db.query(`SELECT id FROM fee_heads WHERE id = $1 AND tenant_id = $2 AND is_active = 1`, [feeHeadId, tenantId]);
+  const { rows: headRows } = await db.query(`SELECT id, name FROM fee_heads WHERE id = $1 AND tenant_id = $2 AND is_active = 1`, [feeHeadId, tenantId]);
   const head = headRows[0];
   if (!head) return res.status(404).json({ error: 'Fee head not found' });
 
@@ -58,7 +58,7 @@ async function recordPayment(req, res) {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [id, tenantId, studentId, amount, method || 'cash', note || null, paidOn, userId, idempotencyKey || null, feeHeadId, resolvedTermId], client);
 
-    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentId, amount, feeHeadId, termId: resolvedTermId } }, client);
+    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentName: student.name, feeHeadName: head.name, amount, method: method || 'cash' } }, client);
   });
 
   res.status(201).json({ id });

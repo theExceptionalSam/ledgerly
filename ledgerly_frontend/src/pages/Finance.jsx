@@ -64,7 +64,10 @@ export default function Finance() {
           <div key={t.id} className="tx-row">
             <div>
               <div className="list-item-title">{t.category}</div>
-              <div className="list-item-sub">{t.occurred_on}{t.description ? " · " + t.description : ""}</div>
+              <div className="list-item-sub">
+                {t.occurred_on}{t.description ? " · " + t.description : ""}
+                {t.recorded_by_name ? ` · by ${t.recorded_by_name}` : ""}
+              </div>
             </div>
             <div className="tx-amount-row">
               <div className="tx-amount" style={{ color: t.type === "income" ? "#1B7A43" : "#B3261E" }}>
