@@ -1,9 +1,10 @@
 const { Router } = require('express');
+const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { listAuditLogs } = require('../controllers/audit.controller');
+const ctrl = require('../controllers/audit.controller');
 
 const router = Router();
 router.use(requireAuth, requireRole('owner'));
-router.get('/', listAuditLogs);
+router.get('/', asyncHandler(ctrl.listAuditLogs));
 
 module.exports = router;

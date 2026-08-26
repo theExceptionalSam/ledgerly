@@ -73,6 +73,17 @@ async function deleteSession(req, res) {
     return res.status(400).json({ error: 'Cannot delete a session that has fee assignments. Archive it instead, or remove the assignments first.' });
   }
 
+  // Block deletion if any term in this session has payments — financial history
+  // must never be silently destroyed (mirrors the guard in deleteTerm).
+  const { rows: paymentUsage } = await db.query(`
+    SELECT COUNT(*) AS n FROM payments p
+    JOIN terms t ON t.id = p.term_id
+    WHERE t.session_id = $1 AND p.tenant_id = $2
+  `, [id, tenantId]);
+  if (Number(paymentUsage[0].n) > 0) {
+    return res.status(400).json({ error: 'Cannot delete a session that has payments. These records are permanent for audit integrity.' });
+  }
+
   await db.query(`DELETE FROM terms WHERE session_id = $1 AND tenant_id = $2`, [id, tenantId]);
   await db.query(`DELETE FROM academic_sessions WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'session', entityId: id, ipAddress: req.ip });

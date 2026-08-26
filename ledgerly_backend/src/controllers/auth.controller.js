@@ -5,14 +5,18 @@ const { signAccessToken, newRefreshToken, hashRefreshToken } = require('../utils
 const { recordAudit } = require('../utils/audit');
 const { issueVerificationCode, verifyCode } = require('../utils/otp');
 
-const isDev = process.env.NODE_ENV !== 'production';
+// Explicit opt-in for dev OTP exposure. NODE_ENV=production with a preview
+// environment should NEVER leak OTPs — only this explicit flag does.
+const showDevOtp = process.env.LEDGERLY_DEV_SHOW_OTP === 'true';
 
 const REFRESH_COOKIE = 'refresh_token';
 const isProd = process.env.NODE_ENV === 'production';
+// sameSite 'lax' prevents CSRF on the refresh endpoint while still allowing
+// top-level navigations. 'none' (previous) allowed any site to trigger refresh.
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
-  sameSite: isProd ? 'none' : 'strict',
+  sameSite: isProd ? 'lax' : 'strict',
   path: '/api/v1/auth',
   maxAge: 1000 * 60 * 60 * 24 * 30,
 };
@@ -83,9 +87,8 @@ async function registerSchool(req, res) {
   res.status(201).json({
     verificationRequired: true,
     email: email.toLowerCase(),
-    // Exposed only outside production so the flow is testable before a mail
-    // transport is configured. In production it goes out by email only.
-    ...(isDev ? { devCode: code } : {}),
+    // Only exposed when LEDGERLY_DEV_SHOW_OTP=true — never in production.
+    ...(showDevOtp ? { devCode: code } : {}),
   });
 }
 
@@ -94,7 +97,8 @@ async function verifyOtp(req, res) {
   const { email, code } = req.body;
   const { rows } = await db.query(`SELECT * FROM users WHERE email = $1`, [email.toLowerCase()]);
   const user = rows[0];
-  if (!user) return res.status(404).json({ error: 'No account found for this email' });
+  // Generic error to avoid user enumeration — same shape whether or not the email exists.
+  if (!user) return res.status(400).json({ error: 'Invalid or expired verification code' });
 
   const result = await verifyCode(user.tenant_id, email.toLowerCase(), code);
   if (!result.ok) return res.status(400).json({ error: result.error });
@@ -103,16 +107,16 @@ async function verifyOtp(req, res) {
   await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'update', entityType: 'user', entityId: user.id, ipAddress: req.ip, metadata: { emailVerified: true } });
 
   const accessToken = await issueSession(res, user);
-  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true } });
+  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
+  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
 }
 
 async function resendOtp(req, res) {
   const { email } = req.body;
   const { rows } = await db.query(`SELECT * FROM users WHERE email = $1`, [email.toLowerCase()]);
   const user = rows[0];
-  if (!user) return res.status(404).json({ error: 'No account found for this email' });
-
-  await issueVerificationCode(user.tenant_id, email.toLowerCase());
+  // Generic response — does not reveal whether the email is registered.
+  if (user) await issueVerificationCode(user.tenant_id, email.toLowerCase());
   res.json({ ok: true });
 }
 
@@ -154,12 +158,14 @@ async function login(req, res) {
       error: 'Please verify your school email before signing in.',
       verificationRequired: true,
       email: user.email,
-      ...(isDev ? { devCode: code } : {}),
+      ...(showDevOtp ? { devCode: code } : {}),
     });
   }
 
   const accessToken = await issueSession(res, user);
-  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true } });
+  // Include tenant name so the frontend doesn't need an extra /auth/me call.
+  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
+  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
 }
 
 async function refresh(req, res) {
@@ -182,6 +188,56 @@ async function refresh(req, res) {
   await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, [record.id]);
   const accessToken = await issueSession(res, user);
   res.json({ accessToken });
+}
+
+// --- Password reset flow ---
+async function forgotPassword(req, res) {
+  const { email } = req.body;
+  const { rows } = await db.query(`SELECT * FROM users WHERE email = $1`, [email.toLowerCase()]);
+  const user = rows[0];
+  // Always return ok — never reveal whether the email is registered.
+  if (!user) return res.json({ ok: true });
+
+  const token = randomUUID() + randomUUID();
+  const tokenHash = hashRefreshToken(token);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  await db.query(`
+    INSERT INTO verification_codes (id, tenant_id, email, code_hash, expires_at)
+    VALUES ($1, $2, $3, $4, $5)
+  `, [randomUUID(), user.tenant_id, email.toLowerCase(), tokenHash, expiresAt]);
+
+  console.log(`[Password Reset] Token for ${email}: ${token}`);
+  // TODO: email the token via Resend once a verified domain is configured.
+
+  res.json({ ok: true, ...(showDevOtp ? { devToken: token } : {}) });
+}
+
+async function resetPassword(req, res) {
+  const { email, token, newPassword } = req.body;
+  const tokenHash = hashRefreshToken(token);
+  const { rows } = await db.query(`
+    SELECT * FROM verification_codes
+    WHERE email = $1 AND code_hash = $2 AND consumed_at IS NULL
+    ORDER BY created_at DESC LIMIT 1
+  `, [email.toLowerCase(), tokenHash]);
+  const record = rows[0];
+  if (!record || new Date(record.expires_at) < new Date()) {
+    return res.status(400).json({ error: 'Invalid or expired reset token' });
+  }
+
+  const { rows: userRows } = await db.query(`SELECT * FROM users WHERE email = $1 AND tenant_id = $2`, [email.toLowerCase(), record.tenant_id]);
+  const user = userRows[0];
+  if (!user) return res.status(400).json({ error: 'Invalid or expired reset token' });
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await db.transaction(async (client) => {
+    await db.query(`UPDATE users SET password_hash = $1, failed_login_count = 0, locked_until = NULL WHERE id = $2`, [passwordHash, user.id], client);
+    await db.query(`UPDATE verification_codes SET consumed_at = now() WHERE id = $1`, [record.id], client);
+    // Revoke all existing refresh tokens so active sessions are forced to re-login.
+    await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [user.id], client);
+  });
+  await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'update', entityType: 'user', entityId: user.id, ipAddress: req.ip, metadata: { passwordReset: true } });
+  res.json({ ok: true });
 }
 
 async function logout(req, res) {
@@ -216,4 +272,4 @@ async function me(req, res) {
   });
 }
 
-module.exports = { registerSchool, verifyOtp, resendOtp, login, refresh, logout, logoutAll, me };
+module.exports = { registerSchool, verifyOtp, resendOtp, login, refresh, logout, logoutAll, me, forgotPassword, resetPassword };

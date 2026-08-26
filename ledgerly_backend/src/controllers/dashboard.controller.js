@@ -9,7 +9,7 @@ async function getDashboard(req, res) {
 
   let termId = req.query.termId;
   if (!termId) {
-    const { rows } = await db.query(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`, [tenantId]);
+    const { rows } = await db.query(`SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`, [tenantId]);
     const current = rows[0];
     termId = current ? current.id : null;
   }
@@ -23,7 +23,7 @@ async function getDashboard(req, res) {
       COALESCE(SUM(expected_amount - discount_amount), 0) AS expected,
       COUNT(DISTINCT student_id) AS student_count
     FROM student_fee_assignments
-    WHERE tenant_id = ? AND term_id = ?
+    WHERE tenant_id = $1 AND term_id = $2
   `, [tenantId, termId]);
   const feeTotals = feeRows[0];
 
@@ -35,7 +35,7 @@ async function getDashboard(req, res) {
     SELECT COALESCE(SUM(p.amount), 0) AS collected
     FROM payments p
     JOIN students s ON s.id = p.student_id
-    WHERE p.tenant_id = ? AND p.term_id = ? AND p.reversed = 0 AND s.status = 'active'
+    WHERE p.tenant_id = $1 AND p.term_id = $2 AND p.reversed = 0 AND s.status = 'active'
   `, [tenantId, termId]);
   const collected = collectedRows[0].collected;
 
@@ -51,10 +51,10 @@ async function getDashboard(req, res) {
     LEFT JOIN (
       SELECT student_id, SUM(amount) AS paid
       FROM payments
-      WHERE tenant_id = ? AND term_id = ? AND reversed = 0
+      WHERE tenant_id = $1 AND term_id = $2 AND reversed = 0
       GROUP BY student_id
     ) ps ON ps.student_id = sfa.student_id
-    WHERE sfa.tenant_id = ? AND sfa.term_id = ?
+    WHERE sfa.tenant_id = $3 AND sfa.term_id = $4
     GROUP BY sfa.student_id, ps.paid
   `, [tenantId, termId, tenantId, termId]);
 
@@ -68,9 +68,9 @@ async function getDashboard(req, res) {
     else outstanding++;
   }
 
-  const { rows: incomeRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'income' AND reversed = 0 AND term_id = ?`, [tenantId, termId]);
+  const { rows: incomeRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = $1 AND type = 'income' AND reversed = 0 AND term_id = $2`, [tenantId, termId]);
   const otherIncome = incomeRows[0].v;
-  const { rows: expenseRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'expense' AND reversed = 0 AND term_id = ?`, [tenantId, termId]);
+  const { rows: expenseRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = $1 AND type = 'expense' AND reversed = 0 AND term_id = $2`, [tenantId, termId]);
   const expenditure = expenseRows[0].v;
 
   res.json({

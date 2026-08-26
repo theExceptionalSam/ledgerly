@@ -6,6 +6,10 @@ const { recordAudit } = require('../utils/audit');
 // Bulk student import from an Excel (.xlsx/.xls) or CSV file.
 // Expected headers (first row): Name | Class | Admission No | Parent Contact
 // (Fee Amount is no longer imported — fee heads are assigned per student after creation.)
+//
+// Performance: the upload is committed as a SINGLE bulk INSERT with N value tuples,
+// rather than one INSERT per row. This caps the round-trips to the DB at 1 regardless
+// of how many students are in the file (up to the 1000-row cap).
 
 const HEADER_ALIASES = {
   name: ['name', 'student name', 'fullname', 'full name'],
@@ -51,34 +55,54 @@ async function bulkUpload(req, res) {
 
   const inserted = [];
   const failed = [];
-  const insertSql = `
-    INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-  `;
   const limit = Math.min(rows.length - 1, 1000);
 
-  await db.transaction(async (client) => {
-    for (let i = 1; i <= limit; i++) {
-      const row = rows[i];
-      const name = String(row[cols.name] ?? '').trim();
-      const klass = String(row[cols.class] ?? '').trim();
-      const admissionNo = cols.admissionNo !== undefined ? String(row[cols.admissionNo] ?? '').trim() : '';
-      const guardianContact = cols.guardianContact !== undefined ? String(row[cols.guardianContact] ?? '').trim() : '';
+  // Pass 1: validate every row, collect the values for valid rows.
+  // Each row contributes 7 columns: (id, tenant_id, name, class, admission_no, guardian_contact, created_by).
+  const valueTuples = [];
+  const params = [];
+  for (let i = 1; i <= limit; i++) {
+    const row = rows[i];
+    const name = String(row[cols.name] ?? '').trim();
+    const klass = String(row[cols.class] ?? '').trim();
+    const admissionNo = cols.admissionNo !== undefined ? String(row[cols.admissionNo] ?? '').trim() : '';
+    const guardianContact = cols.guardianContact !== undefined ? String(row[cols.guardianContact] ?? '').trim() : '';
 
-      const rowNumber = i + 1; // 1-based, matching what the user sees in Excel
-      if (!name || !klass) {
-        failed.push({ row: rowNumber, reason: 'Name and class are required' });
-        continue;
-      }
-
-      const id = randomUUID();
-      await db.query(insertSql, [
-        id, tenantId, name.slice(0, 150), klass.slice(0, 60),
-        admissionNo.slice(0, 60) || null, guardianContact.slice(0, 120) || null, userId
-      ], client);
-      inserted.push(id);
+    const rowNumber = i + 1; // 1-based, matching what the user sees in Excel
+    if (!name || !klass) {
+      failed.push({ row: rowNumber, reason: 'Name and class are required' });
+      continue;
     }
-  });
+
+    const id = randomUUID();
+    valueTuples.push(id);
+    inserted.push(id);
+    params.push(
+      id,
+      tenantId,
+      name.slice(0, 150),
+      klass.slice(0, 60),
+      admissionNo.slice(0, 60) || null,
+      guardianContact.slice(0, 120) || null,
+      userId
+    );
+  }
+
+  // Pass 2: one bulk INSERT for all valid rows. Each tuple is ($N..$N+6), numbered
+  // per-query starting at $1. A single INSERT is atomic on its own, so no
+  // explicit transaction is required.
+  if (params.length > 0) {
+    const tuples = [];
+    for (let i = 0; i < valueTuples.length; i++) {
+      const base = i * 7;
+      tuples.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`);
+    }
+    const sql = `
+      INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
+      VALUES ${tuples.join(', ')}
+    `;
+    await db.query(sql, params);
+  }
 
   if (inserted.length > 0) {
     await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student_bulk', ipAddress: req.ip, metadata: { imported: inserted.length, failed: failed.length } });
