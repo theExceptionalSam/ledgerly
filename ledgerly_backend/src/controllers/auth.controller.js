@@ -11,12 +11,14 @@ const showDevOtp = process.env.LEDGERLY_DEV_SHOW_OTP === 'true';
 
 const REFRESH_COOKIE = 'refresh_token';
 const isProd = process.env.NODE_ENV === 'production';
-// sameSite 'lax' prevents CSRF on the refresh endpoint while still allowing
-// top-level navigations. 'none' (previous) allowed any site to trigger refresh.
+// sameSite 'none' + secure is REQUIRED for cross-site cookies (Vercel frontend
+// → Render backend are different domains). 'lax' blocks the cookie on fetch
+// requests, which breaks session restore on page refresh.
+// CSRF is handled separately via Origin header checking in the refresh endpoint.
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
-  sameSite: isProd ? 'lax' : 'strict',
+  sameSite: isProd ? 'none' : 'strict',
   path: '/api/v1/auth',
   maxAge: 1000 * 60 * 60 * 24 * 30,
 };
@@ -169,6 +171,15 @@ async function login(req, res) {
 }
 
 async function refresh(req, res) {
+  // CSRF protection: only accept refresh requests from allowed origins.
+  // sameSite:'none' is required for cross-site cookies, so we can't rely on
+  // the browser to block CSRF — we check the Origin header instead.
+  const origin = req.headers.origin;
+  const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',');
+  if (origin && allowedOrigins.length > 0 && allowedOrigins[0] && !allowedOrigins.includes(origin)) {
+    return res.status(403).json({ error: 'Origin not permitted' });
+  }
+
   const raw = req.cookies?.[REFRESH_COOKIE];
   if (!raw) return res.status(401).json({ error: 'No active session' });
 

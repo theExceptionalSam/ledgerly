@@ -1,12 +1,16 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { api, setAccessToken, setUnauthorizedHandler } from "../api/client";
 
 const AuthContext = createContext(null);
+
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "scroll"];
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [schoolName, setSchoolName] = useState("");
   const [initializing, setInitializing] = useState(true);
+  const lastActivityRef = useRef(Date.now());
 
   const clearSession = useCallback(() => {
     setUser(null);
@@ -14,6 +18,7 @@ export function AuthProvider({ children }) {
     setAccessToken(null);
   }, []);
 
+  // --- Session restore on page load ---
   useEffect(() => {
     setUnauthorizedHandler(clearSession);
     (async () => {
@@ -24,6 +29,7 @@ export function AuthProvider({ children }) {
             const data = await api.get("/auth/me");
             setUser(data.user);
             setSchoolName(data.tenant?.name || "");
+            lastActivityRef.current = Date.now();
           } catch {
             clearSession();
           }
@@ -35,13 +41,49 @@ export function AuthProvider({ children }) {
     })();
   }, [clearSession]);
 
+  // --- 30-minute inactivity auto-logout ---
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId;
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(async () => {
+        // 30 minutes of inactivity — log out automatically
+        try { await api.post("/auth/logout"); } catch {}
+        clearSession();
+        // Redirect to login
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login?reason=inactive";
+        }
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // Reset on any user activity
+    ACTIVITY_EVENTS.forEach((evt) => {
+      window.addEventListener(evt, resetTimer, { passive: true });
+    });
+
+    // Start the initial timer
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      ACTIVITY_EVENTS.forEach((evt) => {
+        window.removeEventListener(evt, resetTimer);
+      });
+    };
+  }, [user, clearSession]);
+
   const login = async (email, password) => {
     try {
       const data = await api.post("/auth/login", { email, password });
       setAccessToken(data.accessToken);
       setUser(data.user);
-      // Backend now includes schoolName in the login response — no extra /me call needed.
       setSchoolName(data.schoolName || "");
+      lastActivityRef.current = Date.now();
       return data.user;
     } catch (err) {
       if (err.status === 403 && err.payload?.verificationRequired) {
@@ -64,6 +106,7 @@ export function AuthProvider({ children }) {
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSchoolName(data.schoolName || "");
+    lastActivityRef.current = Date.now();
     return data.user;
   };
 

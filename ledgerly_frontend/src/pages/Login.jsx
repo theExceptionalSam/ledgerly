@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const inactiveMessage = searchParams.get("reason") === "inactive";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -36,6 +39,11 @@ export default function Login() {
         </div>
         <h1>Sign in</h1>
         <p className="auth-sub">Access your school's fee and finance records.</p>
+        {inactiveMessage && (
+          <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8" }}>
+            You were signed out automatically after 30 minutes of inactivity. Please sign in again.
+          </div>
+        )}
         {error && <div className="form-error">{error}</div>}
         <label>Email</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
