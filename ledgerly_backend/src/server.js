@@ -14,7 +14,6 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const auditRoutes = require('./routes/audit.routes');
 const termsRoutes = require('./routes/terms.routes');
 const feeHeadRoutes = require('./routes/fee-heads.routes');
-const reminderRoutes = require('./routes/reminders.routes');
 
 const app = express();
 
@@ -38,8 +37,6 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
 app.use('/api/v1/terms', termsRoutes);
 app.use('/api/v1/fee-heads', feeHeadRoutes);
-app.use('/api/v1/reminders', reminderRoutes);
-app.use('/api/v1/messaging-settings', reminderRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use(errorHandler);

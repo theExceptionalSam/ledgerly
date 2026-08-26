@@ -24,7 +24,6 @@ export default function Students() {
   const [expanded, setExpanded] = useState(null);
   const [detail, setDetail] = useState(null);
   const [feeHeads, setFeeHeads] = useState([]);
-  const [messagingEnabled, setMessagingEnabled] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("fees");
 
@@ -40,7 +39,6 @@ export default function Students() {
 
   useEffect(() => {
     api.get("/fee-heads").then((d) => setFeeHeads(d.feeHeads)).catch(() => {});
-    api.get("/messaging-settings").then((d) => setMessagingEnabled(!!d.settings.reminders_enabled)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -83,14 +81,6 @@ export default function Students() {
   const applyDiscount = async (studentId, assignmentId, amount, reason) => {
     await api.post(`/students/${studentId}/fees/${assignmentId}/discount`, { discountAmount: amount, discountReason: reason });
     if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
-  };
-
-  const sendReminder = async (studentId) => {
-    try {
-      const r = await api.post(`/students/${studentId}/reminder`, { channel: "sms" });
-      alert(r.status === "sent" ? "Reminder sent." : `Reminder failed: ${r.error || "unknown error"}`);
-      if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
-    } catch (e) { alert(e.message); }
   };
 
   const archive = async (id, name) => {
@@ -156,7 +146,6 @@ export default function Students() {
                       <div className="detail-tabs">
                         <button className={"tab-btn" + (tab === "fees" ? " active" : "")} onClick={() => setTab("fees")}>Fees</button>
                         <button className={"tab-btn" + (tab === "payments" ? " active" : "")} onClick={() => setTab("payments")}>Payments</button>
-                        <button className={"tab-btn" + (tab === "reminders" ? " active" : "")} onClick={() => setTab("reminders")}>Reminders</button>
                       </div>
 
                       {tab === "fees" && (
@@ -191,24 +180,11 @@ export default function Students() {
                         </div>
                       )}
 
-                      {tab === "reminders" && <ReminderHistory studentId={s.id} />}
-
                       {canEdit && (
                         <div className="action-row">
                           <button className="btn-primary" style={{ flex: 1 }} onClick={() => setPayFor(s.id)}>Record payment</button>
-                          {s.outstanding > 0 && (
-                            <button
-                              className="btn-primary"
-                              disabled={!messagingEnabled}
-                              title={messagingEnabled ? "" : "Enable reminders in Messaging Settings first"}
-                              onClick={() => sendReminder(s.id)}
-                            >Send reminder</button>
-                          )}
                           <button className="btn-danger-ghost" onClick={() => archive(s.id, s.name)}>Remove</button>
                         </div>
-                      )}
-                      {s.outstanding > 0 && !messagingEnabled && (
-                        <div className="field-hint" style={{ marginTop: 6 }}>Reminders are disabled. Enable them in Messaging Settings to send SMS/WhatsApp.</div>
                       )}
                     </div>
                   )}
@@ -337,29 +313,6 @@ function QuickDiscountModal({ feeHeadName, currentDiscount, onClose, onSave }) {
         <input value={reason} onChange={(e) => setReason(e.target.value)} />
         <button className="btn-primary btn-full" disabled={busy} onClick={submit}>{busy ? "Saving..." : "Apply discount"}</button>
       </div>
-    </div>
-  );
-}
-
-function ReminderHistory({ studentId }) {
-  const [reminders, setReminders] = useState([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api.get(`/reminders?studentId=${studentId}`).then((d) => setReminders(d.reminders)).catch((e) => setError(e.message));
-  }, [studentId]);
-
-  if (error) return <div className="form-error">{error}</div>;
-  if (reminders.length === 0) return <div className="empty-state" style={{ padding: "16px" }}>No reminders sent yet.</div>;
-  return (
-    <div className="payment-history">
-      <div className="payment-history-title">Reminder history</div>
-      {reminders.map((r) => (
-        <div key={r.id} className="payment-history-row">
-          <span>{r.channel.toUpperCase()} · {new Date(r.created_at).toLocaleDateString()}</span>
-          <span className="badge" style={{ color: r.status === "sent" ? "#1B7A43" : "#B3261E", background: r.status === "sent" ? "#E7F4EC" : "#FBEAE9" }}>{r.status}</span>
-        </div>
-      ))}
     </div>
   );
 }

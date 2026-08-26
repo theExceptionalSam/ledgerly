@@ -5,7 +5,6 @@ const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/students.controller');
 const bulkCtrl = require('../controllers/studentsBulk.controller');
-const remindersCtrl = require('../controllers/reminders.controller');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,12 +38,6 @@ router.post('/:id/fees/:assignmentId/discount', requireRole('owner'), [
   body('discountAmount').isFloat({ min: 0 }),
   body('discountReason').optional({ checkFalsy: true }).trim().isLength({ max: 300 }).escape(),
 ], validate, ctrl.applyDiscount);
-
-// Phase 5: send a reminder (SMS/WhatsApp) to a student's parent
-router.post('/:id/reminder', requireRole('owner', 'bursar', 'accountant'), [
-  param('id').isUUID(),
-  body('channel').optional().isIn(['sms', 'whatsapp']),
-], validate, remindersCtrl.sendReminder);
 
 router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('name').trim().isLength({ min: 1, max: 150 }).escape(),

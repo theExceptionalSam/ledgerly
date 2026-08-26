@@ -11,7 +11,6 @@ import Finance from "./pages/Finance";
 import AuditLog from "./pages/AuditLog";
 import Terms from "./pages/Terms";
 import FeeHeads from "./pages/FeeHeads";
-import MessagingSettings from "./pages/MessagingSettings";
 
 export default function App() {
   return (
@@ -43,11 +42,6 @@ export default function App() {
         <Route path="/terms" element={
           <ProtectedRoute roles={["owner"]}>
             <Layout><Terms /></Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/messaging-settings" element={
-          <ProtectedRoute roles={["owner"]}>
-            <Layout><MessagingSettings /></Layout>
           </ProtectedRoute>
         } />
         <Route path="/audit-log" element={

@@ -46,15 +46,4 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests. Please slow down.' },
 });
 
-// Phase 5: bulk reminder rate limiter — max 3 bulk sends per hour per tenant,
-// to prevent runaway SMS costs from a mis-click. Keyed on tenant identity.
-const bulkReminderLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.user?.tenantId || req.ip,
-  message: { error: 'Bulk reminder limit reached (3 per hour). Please wait before sending again.' },
-});
-
-module.exports = { corsMiddleware, securityHeaders, authLimiter, apiLimiter, bulkReminderLimiter };
+module.exports = { corsMiddleware, securityHeaders, authLimiter, apiLimiter };
