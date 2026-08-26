@@ -47,6 +47,15 @@ export default function Students() {
     api.get(`/students/${expanded}?termId=${selectedTermId}`).then(setDetail).catch((e) => setError(e.message));
   }, [expanded, selectedTermId]);
 
+  // Counts per status — computed from the full students list (before search
+  // filtering) so the chips always show the true totals for this term.
+  const counts = {
+    all: students.length,
+    paid: students.filter((s) => s.status === "paid").length,
+    partial: students.filter((s) => s.status === "partial").length,
+    outstanding: students.filter((s) => s.status === "outstanding").length,
+  };
+
   const filtered = students.filter((s) => {
     if (filter !== "all" && s.status !== filter) return false;
     if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
@@ -115,6 +124,7 @@ export default function Students() {
             {["all", "paid", "partial", "outstanding"].map((f) => (
               <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
                 {f === "all" ? "All" : statusMeta[f].label}
+                <span className="chip-count">{counts[f]}</span>
               </button>
             ))}
           </div>

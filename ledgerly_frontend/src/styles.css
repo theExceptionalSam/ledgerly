@@ -146,8 +146,15 @@ button { font: inherit; cursor: pointer; }
 .filter-chip {
   background: #fff; border: 1px solid var(--line); border-radius: 999px;
   padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+  display: inline-flex; align-items: center; gap: 7px;
 }
 .filter-chip.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+.filter-chip.active .chip-count { background: rgba(255,255,255,0.25); color: #fff; }
+.chip-count {
+  background: var(--line); color: var(--navy); border-radius: 999px;
+  padding: 1px 8px; font-size: 12px; font-weight: 700; min-width: 20px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 .empty-state {
   background: var(--card); border: 1px dashed var(--line); border-radius: var(--radius);
