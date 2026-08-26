@@ -26,7 +26,7 @@ export default function Layout({ children }) {
             </div>
           </div>
           {user && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div className="app-header-actions">
               <button className="btn-ghost-dark" onClick={() => setShowChangePw(true)}>Change password</button>
               <button className="btn-ghost-dark" onClick={handleLogout}>Log out</button>
             </div>
