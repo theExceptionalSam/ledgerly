@@ -2,12 +2,35 @@ const { randomUUID } = require('crypto');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 
+// Phase 2: every payment is recorded against a specific fee head and term.
+// fee_head_id is required (enforced here, not at the column level, since SQLite
+// cannot add a NOT NULL column with no default to an existing table). term_id
+// defaults to the tenant's current term if not provided.
+
 function recordPayment(req, res) {
   const { tenantId, id: userId } = req.user;
-  const { studentId, amount, method, note, paidOn, idempotencyKey } = req.body;
+  const { studentId, amount, method, note, paidOn, idempotencyKey, feeHeadId, termId } = req.body;
+
+  if (!feeHeadId) {
+    return res.status(400).json({ error: 'feeHeadId is required — every payment must be recorded against a specific fee head' });
+  }
 
   const student = db.prepare(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`).get(studentId, tenantId);
   if (!student) return res.status(404).json({ error: 'Student not found' });
+
+  const head = db.prepare(`SELECT id FROM fee_heads WHERE id = ? AND tenant_id = ? AND is_active = 1`).get(feeHeadId, tenantId);
+  if (!head) return res.status(404).json({ error: 'Fee head not found' });
+
+  // Resolve term: use the provided one, or default to the tenant's current term.
+  let resolvedTermId = termId;
+  if (!resolvedTermId) {
+    const current = db.prepare(`SELECT id FROM terms WHERE tenant_id = ? AND is_current = 1`).get(tenantId);
+    if (!current) return res.status(400).json({ error: 'No current term set — create a term first' });
+    resolvedTermId = current.id;
+  } else {
+    const term = db.prepare(`SELECT id FROM terms WHERE id = ? AND tenant_id = ?`).get(resolvedTermId, tenantId);
+    if (!term) return res.status(404).json({ error: 'Term not found' });
+  }
 
   // Idempotency: if this key was already used for this tenant, return the original result
   // instead of creating a duplicate payment (protects against double-tap / retried requests)
@@ -18,11 +41,11 @@ function recordPayment(req, res) {
 
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO payments (id, tenant_id, student_id, amount, method, note, paid_on, recorded_by, idempotency_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, tenantId, studentId, amount, method || 'cash', note || null, paidOn, userId, idempotencyKey || null);
+    INSERT INTO payments (id, tenant_id, student_id, amount, method, note, paid_on, recorded_by, idempotency_key, fee_head_id, term_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, tenantId, studentId, amount, method || 'cash', note || null, paidOn, userId, idempotencyKey || null, feeHeadId, resolvedTermId);
 
-  recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentId, amount } });
+  recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentId, amount, feeHeadId, termId: resolvedTermId } });
   res.status(201).json({ id });
 }
 

@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { naira, todayISO } from "../utils/format";
 import { useAuth } from "../context/AuthContext";
+import { useTerm } from "../context/TermContext";
+import TermSwitcher from "../components/TermSwitcher";
 
 const EXPENSE_CATEGORIES = ["Staff Salaries", "Utilities", "Maintenance", "Learning Materials", "Feeding", "Transport", "Administration", "Other"];
 const INCOME_CATEGORIES = ["Donation", "Grant", "PTA Contribution", "Sales", "Other"];
 
 export default function Finance() {
   const { user } = useAuth();
+  const { selectedTermId } = useTerm();
   const [transactions, setTransactions] = useState([]);
   const [filter, setFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [error, setError] = useState("");
 
   const canManage = ["owner", "accountant", "bursar"].includes(user.role);
@@ -37,6 +41,7 @@ export default function Finance() {
 
   return (
     <div>
+      <TermSwitcher />
       {error && <div className="form-error">{error}</div>}
       <div className="toolbar">
         <div className="filter-row" style={{ marginBottom: 0 }}>
@@ -46,7 +51,10 @@ export default function Finance() {
             </button>
           ))}
         </div>
-        {canManage && <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>}
+        <div style={{ display: "flex", gap: 8 }}>
+          {user.role === "owner" && <button className="btn-primary" onClick={() => setShowBulk(true)}>Send reminders</button>}
+          {canManage && <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>}
+        </div>
       </div>
 
       {transactions.length === 0 && <div className="empty-state">No entries yet. Log income outside fees, and expenditure, here.</div>}
@@ -69,6 +77,12 @@ export default function Finance() {
       </div>
 
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onSave={addTx} />}
+      {showBulk && (
+        <BulkReminderModal
+          termId={selectedTermId}
+          onClose={() => setShowBulk(false)}
+        />
+      )}
     </div>
   );
 }
@@ -85,32 +99,20 @@ function AddTransactionModal({ onClose, onSave }) {
   const categories = type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   const submit = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await onSave({ type, category, amount: Number(amount) || 0, occurredOn: date, description });
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true); setError("");
+    try { await onSave({ type, category, amount: Number(amount) || 0, occurredOn: date, description }); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="modal-title">Add entry</div>
-          <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
+        <div className="modal-header"><div className="modal-title">Add entry</div><button className="modal-close" onClick={onClose}>✕</button></div>
         {error && <div className="form-error">{error}</div>}
         <div className="type-toggle">
           {["expense", "income"].map((t) => (
-            <button
-              key={t}
-              className={"type-toggle-btn" + (type === t ? " active" : "")}
-              onClick={() => { setType(t); setCategory(t === "expense" ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]); }}
-            >
+            <button key={t} className={"type-toggle-btn" + (type === t ? " active" : "")}
+              onClick={() => { setType(t); setCategory(t === "expense" ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]); }}>
               {t === "expense" ? "Expenditure" : "Income"}
             </button>
           ))}
@@ -128,6 +130,62 @@ function AddTransactionModal({ onClose, onSave }) {
         <button className="btn-primary btn-full" disabled={!amount || busy} onClick={submit}>
           {busy ? "Saving..." : "Save entry"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function BulkReminderModal({ termId, onClose }) {
+  const [count, setCount] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!termId) return;
+    api.get(`/students?termId=${termId}`).then((d) => {
+      setCount(d.students.filter((s) => s.outstanding > 0).length);
+    }).catch(() => setCount(0));
+  }, [termId]);
+
+  const send = async () => {
+    setBusy(true); setError("");
+    try {
+      const r = await api.post("/reminders/bulk", { termId });
+      setResult(r);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header"><div className="modal-title">Send reminders to all outstanding</div><button className="modal-close" onClick={onClose}>✕</button></div>
+        {error && <div className="form-error">{error}</div>}
+        {result ? (
+          <div>
+            <div className="finance-row"><span>Sent</span><span style={{ color: "#1B7A43", fontWeight: 700 }}>{result.sent}</span></div>
+            <div className="finance-row"><span>Failed</span><span style={{ color: "#B3261E", fontWeight: 700 }}>{result.failed}</span></div>
+            <button className="btn-primary btn-full" onClick={onClose}>Done</button>
+          </div>
+        ) : (
+          <div>
+            <div className="field-hint" style={{ marginTop: 0 }}>
+              {count === null ? "Counting outstanding students…" :
+                count === 0 ? "No students with outstanding balances for this term." :
+                `${count} student(s) will receive an SMS/WhatsApp reminder.`}
+            </div>
+            {count > 0 && (
+              <label className="checkbox-row">
+                <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+                I confirm I want to send {count} reminder(s)
+              </label>
+            )}
+            <button className="btn-primary btn-full" disabled={!confirmed || busy || count === 0} onClick={send}>
+              {busy ? "Sending..." : "Send reminders"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

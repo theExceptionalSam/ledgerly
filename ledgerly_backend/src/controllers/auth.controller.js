@@ -52,6 +52,19 @@ async function registerSchool(req, res) {
       INSERT INTO users (id, tenant_id, name, email, password_hash, role)
       VALUES (?, ?, ?, ?, ?, 'owner')
     `).run(userId, tenantId, ownerName, email.toLowerCase(), passwordHash);
+    // Every new school starts with a default current term so term-scoped
+    // billing features work immediately, without requiring a manual setup step.
+    db.prepare(`
+      INSERT INTO terms (id, tenant_id, name, is_current)
+      VALUES (?, ?, 'First Term', 1)
+    `).run(randomUUID(), tenantId);
+    // Seed the default fee head catalogue, matching migration 002's seed for
+    // pre-existing tenants. New tenants get the same starting set.
+    const seedHeads = ['Tuition', 'Boarding', 'Feeding', 'Development Levy', 'Exam Fees', 'Sports', 'Uniform'];
+    const insertHead = db.prepare(`INSERT INTO fee_heads (id, tenant_id, name) VALUES (?, ?, ?)`);
+    for (const head of seedHeads) {
+      insertHead.run(randomUUID(), tenantId, head);
+    }
   });
   insertAll();
 
@@ -179,7 +192,12 @@ function me(req, res) {
   const user = db.prepare(`SELECT id, name, email, role, tenant_id FROM users WHERE id = ?`).get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const tenant = db.prepare(`SELECT name, term FROM tenants WHERE id = ?`).get(user.tenant_id);
-  res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id }, tenant });
+  const currentTerm = db.prepare(`SELECT id, name FROM terms WHERE tenant_id = ? AND is_current = 1`).get(user.tenant_id);
+  res.json({
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id },
+    tenant,
+    currentTerm: currentTerm || null,
+  });
 }
 
 module.exports = { registerSchool, verifyOtp, resendOtp, login, refresh, logout, logoutAll, me };

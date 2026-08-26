@@ -107,6 +107,24 @@ async function download(path, filename) {
   URL.revokeObjectURL(url);
 }
 
+// Authenticated PDF fetch — opens in a new browser tab (for receipts).
+async function openPdf(path, retry = true) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (res.status === 401 && retry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return openPdf(path, false);
+    onUnauthorized();
+  }
+  if (!res.ok) throw new Error("Could not open PDF");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: "POST", body }),
@@ -114,5 +132,6 @@ export const api = {
   del: (path, body) => request(path, { method: "DELETE", body }),
   upload,
   download,
+  openPdf,
   refreshAccessToken,
 };

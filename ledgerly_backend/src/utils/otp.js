@@ -1,11 +1,18 @@
 const { randomUUID, randomInt, createHash } = require('crypto');
-const { Resend } = require('resend');
 const db = require('../db');
 
 const OTP_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-init: the Resend client is only constructed when an API key is present,
+// so the server boots fine in dev without an email transport configured.
+let resend = null;
+function getResend() {
+  if (resend) return resend;
+  const { Resend } = require('resend');
+  resend = new Resend(process.env.RESEND_API_KEY);
+  return resend;
+}
 
 function hashCode(email, code) {
   return createHash('sha256').update(`${email}:${code}`).digest('hex');
@@ -30,7 +37,7 @@ async function issueVerificationCode(tenantId, email) {
 
   if (process.env.RESEND_API_KEY) {
     try {
-      await resend.emails.send({
+      await getResend().emails.send({
         from: 'Ledgerly <onboarding@resend.dev>',
         to: email,
         subject: 'Your Ledgerly Verification Code',

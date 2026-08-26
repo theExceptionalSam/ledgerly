@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS students (
   class TEXT NOT NULL,
   admission_no TEXT,
   guardian_contact TEXT,
+  -- Pre-upgrade column. Migration 002 backfills this into student_fee_assignments;
+  -- migration 006 drops it. Do not read or write in application code.
   fee_amount REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
   created_by TEXT NOT NULL REFERENCES users(id),

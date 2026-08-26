@@ -4,7 +4,8 @@ const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 
 // Bulk student import from an Excel (.xlsx/.xls) or CSV file.
-// Expected headers (first row): Name | Class | Admission No | Fee Amount | Parent Contact
+// Expected headers (first row): Name | Class | Admission No | Parent Contact
+// (Fee Amount is no longer imported — fee heads are assigned per student after creation.)
 
 const HEADER_ALIASES = {
   name: ['name', 'student name', 'fullname', 'full name'],
@@ -52,8 +53,8 @@ function bulkUpload(req, res) {
   const inserted = [];
   const failed = [];
   const insertStudent = db.prepare(`
-    INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, fee_amount, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const limit = Math.min(rows.length - 1, 1000);
 
@@ -72,13 +73,9 @@ function bulkUpload(req, res) {
         failed.push({ row: rowNumber, reason: 'Name and class are required' });
         continue;
       }
-      if (feeAmount < 0) {
-        failed.push({ row: rowNumber, reason: 'Fee amount cannot be negative' });
-        continue;
-      }
 
       const id = randomUUID();
-      insertStudent.run(id, tenantId, name.slice(0, 150), klass.slice(0, 60), admissionNo.slice(0, 60) || null, guardianContact.slice(0, 120) || null, feeAmount, userId);
+      insertStudent.run(id, tenantId, name.slice(0, 150), klass.slice(0, 60), admissionNo.slice(0, 60) || null, guardianContact.slice(0, 120) || null, userId);
       inserted.push(id);
     }
   });
@@ -93,8 +90,8 @@ function bulkUpload(req, res) {
 // Generates a one-row example workbook users can fill in and re-upload.
 function bulkTemplate(req, res) {
   const ws = XLSX.utils.aoa_to_sheet([
-    ['Name', 'Class', 'Admission No', 'Fee Amount', 'Parent Contact'],
-    ['Amaka Johnson', 'JSS 1', 'SUN/2026/001', 150000, '08031234567'],
+    ['Name', 'Class', 'Admission No', 'Parent Contact'],
+    ['Amaka Johnson', 'JSS 1', 'SUN/2026/001', '08031234567'],
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Students');
