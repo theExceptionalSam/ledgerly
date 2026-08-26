@@ -2,34 +2,29 @@ const { Router } = require('express');
 const { body, param } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const ctrl = require('../controllers/terms.controller');
+const ctrl = require('../controllers/sessions.controller');
 
 const router = Router();
 router.use(requireAuth);
 
-router.get('/', ctrl.listTerms);
+router.get('/', ctrl.listSessions);
 
-router.post('/', requireRole('owner', 'bursar'), [
+router.post('/', requireRole('owner'), [
   body('name').trim().isLength({ min: 1, max: 120 }).escape(),
-  body('startDate').optional({ checkFalsy: true }).isISO8601(),
-  body('endDate').optional({ checkFalsy: true }).isISO8601(),
   body('setCurrent').optional().isBoolean(),
-  body('sessionId').optional().isUUID(),
-], validate, ctrl.createTerm);
+], validate, ctrl.createSession);
 
 router.put('/:id', requireRole('owner'), [
   param('id').isUUID(),
   body('name').trim().isLength({ min: 1, max: 120 }).escape(),
-  body('startDate').optional({ checkFalsy: true }).isISO8601(),
-  body('endDate').optional({ checkFalsy: true }).isISO8601(),
-], validate, ctrl.updateTerm);
+], validate, ctrl.updateSession);
 
 router.delete('/:id', requireRole('owner'), [
   param('id').isUUID(),
-], validate, ctrl.deleteTerm);
+], validate, ctrl.deleteSession);
 
 router.post('/:id/set-current', requireRole('owner'), [
   param('id').isUUID(),
-], validate, ctrl.setCurrentTerm);
+], validate, ctrl.setCurrentSession);
 
 module.exports = router;

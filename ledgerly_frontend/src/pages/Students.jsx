@@ -17,6 +17,7 @@ export default function Students() {
   const { selectedTermId } = useTerm();
   const [students, setStudents] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -26,9 +27,14 @@ export default function Students() {
   const [feeHeads, setFeeHeads] = useState([]);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("fees");
+  const [selected, setSelected] = useState(new Set());
 
   const canEdit = ["owner", "bursar", "accountant"].includes(user.role);
+  const canDelete = ["owner", "bursar"].includes(user.role);
   const isOwner = user.role === "owner";
+
+  // Unique class list from the loaded students (dynamic — reflects what's actually on record)
+  const classes = [...new Set(students.map((s) => s.class))].sort();
 
   const load = () => {
     if (!selectedTermId) return;
@@ -58,9 +64,39 @@ export default function Students() {
 
   const filtered = students.filter((s) => {
     if (filter !== "all" && s.status !== filter) return false;
+    if (classFilter !== "all" && s.class !== classFilter) return false;
     if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      if (filtered.every((s) => prev.has(s.id))) return new Set();
+      const next = new Set(prev);
+      filtered.forEach((s) => next.add(s.id));
+      return next;
+    });
+  };
+
+  const bulkArchive = async () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`Remove ${ids.length} student${ids.length === 1 ? "" : "s"} from active records? Payment history is kept for audit purposes.`)) return;
+    try {
+      await api.post("/students/bulk/archive", { ids });
+      setSelected(new Set());
+      setExpanded(null);
+      load();
+    } catch (e) { setError(e.message); }
+  };
 
   const addStudent = async (fields) => {
     await api.post("/students", fields);
@@ -111,7 +147,13 @@ export default function Students() {
         <>
           {error && <div className="form-error">{error}</div>}
           <div className="toolbar">
-            <input className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <div className="toolbar-left">
+              <input className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <select className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+                <option value="all">All classes</option>
+                {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
             {canEdit && (
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-primary" onClick={() => setShowUpload(true)}>Upload Excel</button>
@@ -120,7 +162,21 @@ export default function Students() {
             )}
           </div>
 
+          {canDelete && selected.size > 0 && (
+            <div className="bulk-bar">
+              <span>{selected.size} selected</span>
+              <button className="btn-danger-ghost" onClick={bulkArchive}>Remove selected</button>
+              <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
+            </div>
+          )}
+
           <div className="filter-row">
+            {canDelete && filtered.length > 0 && (
+              <label className="select-all-chip">
+                <input type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
+                Select all
+              </label>
+            )}
             {["all", "paid", "partial", "outstanding"].map((f) => (
               <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
                 {f === "all" ? "All" : statusMeta[f].label}
@@ -137,15 +193,24 @@ export default function Students() {
               const isOpen = expanded === s.id;
               return (
                 <div key={s.id} className="list-item">
-                  <div className="list-item-row" onClick={() => setExpanded(isOpen ? null : s.id)}>
-                    <div>
+                  <div className="list-item-row">
+                    {canDelete && (
+                      <input
+                        type="checkbox"
+                        className="row-checkbox"
+                        checked={selected.has(s.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelect(s.id)}
+                      />
+                    )}
+                    <div className="list-item-main" onClick={() => setExpanded(isOpen ? null : s.id)}>
                       <div className="list-item-title">{s.name}</div>
                       <div className="list-item-sub">
                         {s.class}{s.admission_no ? " · " + s.admission_no : ""}
                         {s.guardian_contact ? " · Parent: " + s.guardian_contact : ""}
                       </div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
+                    <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : s.id)}>
                       <span className="badge" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
                       <div className="list-item-amount">{naira(s.paid)} / {naira(s.expected)}</div>
                     </div>

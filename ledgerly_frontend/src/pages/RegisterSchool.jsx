@@ -12,7 +12,6 @@ export default function RegisterSchool() {
   const [busy, setBusy] = useState(false);
 
   const update = (key) => (e) => setFields((f) => ({ ...f, [key]: e.target.value }));
-
   const mismatch = fields.confirmPassword !== "" && fields.password !== fields.confirmPassword;
 
   const submit = async (e) => {
@@ -26,7 +25,6 @@ export default function RegisterSchool() {
     try {
       const { phone, ...rest } = fields;
       await registerSchool({ ...rest, phone: phone.trim() });
-      // Registration now requires email verification — continue at the OTP screen.
       navigate("/verify", { state: { email: fields.email } });
     } catch (err) {
       setError(err.details ? err.details.map((d) => d.message).join(" · ") : err.message);
@@ -38,6 +36,9 @@ export default function RegisterSchool() {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={submit}>
+        <div className="auth-logo-block">
+          <img src="/ledgerly-logo.jpg" alt="Ledgerly" className="auth-logo" />
+        </div>
         <h1>Register your school</h1>
         <p className="auth-sub">Creates your school's account and your owner login.</p>
         {error && <div className="form-error">{error}</div>}

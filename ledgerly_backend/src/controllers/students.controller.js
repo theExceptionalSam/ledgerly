@@ -88,13 +88,40 @@ async function archiveStudent(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id } = req.params;
 
-  const { rows } = await db.query(`SELECT id FROM students WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  const { rows } = await db.query(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   const existing = rows[0];
   if (!existing) return res.status(404).json({ error: 'Student not found' });
 
-  await db.query(`UPDATE students SET status = 'archived' WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+  await db.query(`UPDATE students SET status = 'archived' WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student', entityId: id, ipAddress: req.ip });
   res.json({ ok: true });
+}
+
+// Bulk archive — soft-deletes multiple students at once. Financial history is
+// preserved for each. Returns the count archived.
+async function bulkArchiveStudents(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No student IDs provided' });
+  }
+
+  let archived = 0;
+  await db.transaction(async (client) => {
+    for (const id of ids) {
+      const result = await db.query(
+        `UPDATE students SET status = 'archived' WHERE id = $1 AND tenant_id = $2 AND status = 'active'`,
+        [id, tenantId], client
+      );
+      if (result.rowCount > 0) archived++;
+    }
+  });
+
+  if (archived > 0) {
+    await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student_bulk', ipAddress: req.ip, metadata: { archived } });
+  }
+  res.json({ archived });
 }
 
 async function getStudentDetail(req, res) {
@@ -215,4 +242,4 @@ async function applyDiscount(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listStudents, createStudent, updateStudent, archiveStudent, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount };
+module.exports = { listStudents, createStudent, updateStudent, archiveStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount };

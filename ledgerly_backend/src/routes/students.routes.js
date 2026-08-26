@@ -21,6 +21,9 @@ router.use(requireAuth);
 router.get('/', ctrl.listStudents);
 router.get('/bulk/template', bulkCtrl.bulkTemplate);
 router.post('/bulk', requireRole('owner', 'bursar', 'accountant'), upload.single('file'), bulkCtrl.bulkUpload);
+router.post('/bulk/archive', requireRole('owner', 'bursar'), [
+  body('ids').isArray({ min: 1 }),
+], validate, ctrl.bulkArchiveStudents);
 router.get('/:id', [param('id').isUUID()], validate, ctrl.getStudentDetail);
 
 // Phase 2: itemised fee assignments

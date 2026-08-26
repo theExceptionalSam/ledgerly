@@ -55,12 +55,20 @@ async function registerSchool(req, res) {
       INSERT INTO users (id, tenant_id, name, email, password_hash, role)
       VALUES ($1, $2, $3, $4, $5, 'owner')
     `, [userId, tenantId, ownerName, email.toLowerCase(), passwordHash], client);
-    // Every new school starts with a default current term so term-scoped
-    // billing features work immediately, without requiring a manual setup step.
+    // Every new school starts with a default academic session containing
+    // three terms (First, Second, Third), with First Term set as current.
+    const sessionId = randomUUID();
     await db.query(`
-      INSERT INTO terms (id, tenant_id, name, is_current)
-      VALUES ($1, $2, 'First Term', 1)
-    `, [randomUUID(), tenantId], client);
+      INSERT INTO academic_sessions (id, tenant_id, name, is_current)
+      VALUES ($1, $2, 'First Session', 1)
+    `, [sessionId, tenantId], client);
+    const termNames = ['First Term', 'Second Term', 'Third Term'];
+    for (let i = 0; i < termNames.length; i++) {
+      await db.query(`
+        INSERT INTO terms (id, tenant_id, session_id, name, is_current)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [randomUUID(), tenantId, sessionId, termNames[i], i === 0 ? 1 : 0], client);
+    }
     // Seed the default fee head catalogue, matching migration 002's seed for
     // pre-existing tenants. New tenants get the same starting set.
     const seedHeads = ['Tuition', 'Boarding', 'Feeding', 'Development Levy', 'Exam Fees', 'Sports', 'Uniform'];

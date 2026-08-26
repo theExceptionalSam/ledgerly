@@ -31,6 +31,9 @@ export default function Login() {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={submit}>
+        <div className="auth-logo-block">
+          <img src="/ledgerly-logo.jpg" alt="Ledgerly" className="auth-logo" />
+        </div>
         <h1>Sign in</h1>
         <p className="auth-sub">Access your school's fee and finance records.</p>
         {error && <div className="form-error">{error}</div>}

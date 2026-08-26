@@ -5,18 +5,17 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [schoolName, setSchoolName] = useState("");
   const [initializing, setInitializing] = useState(true);
 
   const clearSession = useCallback(() => {
     setUser(null);
+    setSchoolName("");
     setAccessToken(null);
   }, []);
 
   useEffect(() => {
     setUnauthorizedHandler(clearSession);
-    // Attempt a silent session restore on load using the httpOnly refresh cookie,
-    // so a page reload does not force a fresh login. A network failure (API
-    // unreachable) must still clear initializing, or the app hangs on Loading.
     (async () => {
       try {
         const token = await api.refreshAccessToken();
@@ -24,6 +23,7 @@ export function AuthProvider({ children }) {
           try {
             const data = await api.get("/auth/me");
             setUser(data.user);
+            setSchoolName(data.tenant?.name || "");
           } catch {
             clearSession();
           }
@@ -40,9 +40,13 @@ export function AuthProvider({ children }) {
       const data = await api.post("/auth/login", { email, password });
       setAccessToken(data.accessToken);
       setUser(data.user);
+      // Fetch the school name right after login
+      try {
+        const me = await api.get("/auth/me");
+        setSchoolName(me.tenant?.name || "");
+      } catch {}
       return data.user;
     } catch (err) {
-      // Unverified schools are sent to the OTP screen instead of an error dead-end.
       if (err.status === 403 && err.payload?.verificationRequired) {
         const e = new Error(err.message);
         e.verificationRequired = true;
@@ -64,6 +68,11 @@ export function AuthProvider({ children }) {
     const data = await api.post("/auth/verify-otp", { email, code });
     setAccessToken(data.accessToken);
     setUser(data.user);
+    // Fetch the school name after first verification
+    try {
+      const me = await api.get("/auth/me");
+      setSchoolName(me.tenant?.name || "");
+    } catch {}
     return data.user;
   };
 
@@ -77,7 +86,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, initializing, login, registerSchool, verifyOtp, resendOtp, logout }}>
+    <AuthContext.Provider value={{ user, setUser, schoolName, initializing, login, registerSchool, verifyOtp, resendOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );
