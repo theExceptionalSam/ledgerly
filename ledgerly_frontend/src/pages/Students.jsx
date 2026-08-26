@@ -513,9 +513,6 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
     setBusy(true); setError("");
     try {
       const ids = [];
-      // Generate one stable idempotency key per payment action (not per retry).
-      // If the user clicks Save again after a timeout, the same key is reused
-      // and the server returns the original payment instead of creating a duplicate.
       const actionId = crypto.randomUUID();
       for (const line of valid) {
         const r = await api.post("/payments", {
@@ -526,7 +523,14 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
         ids.push(r.id);
       }
       setSavedPaymentIds(ids);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      // Show validation details if available (e.g. "feeHeadId must be a UUID")
+      if (e.details && e.details.length > 0) {
+        setError(e.details.map((d) => `${d.field}: ${d.message}`).join(" · "));
+      } else {
+        setError(e.message);
+      }
+    } finally { setBusy(false); }
   };
 
   if (savedPaymentIds) {
@@ -547,6 +551,11 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
     <Modal title={"Record payment · " + (student ? student.name : "")} onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
       {student && <div className="field-hint">Outstanding: {naira(student.outstanding)}</div>}
+      {fees.length === 0 && (
+        <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8" }}>
+          No fee heads assigned to this student for the current term. Assign fees first (expand the student → Fees tab → click a fee head), then record a payment.
+        </div>
+      )}
       {lines.map((line, i) => (
         <div key={i} className="payment-line">
           <label>{i === 0 ? "Fee head" : ""}</label>
@@ -577,7 +586,7 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
       <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       <label>Note (optional)</label>
       <input value={note} onChange={(e) => setNote(e.target.value)} />
-      <button className="btn-primary btn-full" disabled={busy} onClick={submit}>
+      <button className="btn-primary btn-full" disabled={busy || fees.length === 0} onClick={submit}>
         {busy ? "Saving..." : "Save payment"}
       </button>
     </Modal>
