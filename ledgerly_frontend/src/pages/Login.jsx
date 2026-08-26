@@ -32,7 +32,7 @@ export default function Login() {
     <div className="auth-page">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-logo.jpg" alt="Ledgerly" className="auth-logo" />
+          <img src="/ledgerly-wordmark.jpg" alt="Ledgerly" className="auth-wordmark" />
         </div>
         <h1>Sign in</h1>
         <p className="auth-sub">Access your school's fee and finance records.</p>

@@ -10,6 +10,7 @@ const INCOME_CATEGORIES = ["Donation", "Grant", "PTA Contribution", "Sales", "Ot
 
 export default function Finance() {
   const { user } = useAuth();
+  const { selectedTermId } = useTerm();
   const [transactions, setTransactions] = useState([]);
   const [filter, setFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
@@ -19,14 +20,15 @@ export default function Finance() {
   const canRemove = ["owner", "accountant"].includes(user.role);
 
   const load = () => {
-    const query = filter === "all" ? "" : `?type=${filter}`;
-    api.get(`/transactions${query}`).then((d) => setTransactions(d.transactions)).catch((e) => setError(e.message));
+    if (!selectedTermId) { setTransactions([]); return; }
+    const typeQuery = filter === "all" ? "" : `&type=${filter}`;
+    api.get(`/transactions?termId=${selectedTermId}${typeQuery}`).then((d) => setTransactions(d.transactions)).catch((e) => setError(e.message));
   };
 
-  useEffect(() => { load(); }, [filter]);
+  useEffect(() => { load(); }, [filter, selectedTermId]);
 
   const addTx = async (tx) => {
-    await api.post("/transactions", tx);
+    await api.post("/transactions", { ...tx, termId: selectedTermId });
     setShowAdd(false);
     load();
   };

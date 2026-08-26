@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { todayISO } from "../utils/format";
+import { useTerm } from "../context/TermContext";
 
 export default function Terms() {
+  const { reload: reloadTerms } = useTerm();
   const [sessions, setSessions] = useState([]);
   const [showAddSession, setShowAddSession] = useState(false);
   const [showAddTerm, setShowAddTerm] = useState(false);
   const [error, setError] = useState("");
 
-  const load = () => api.get("/sessions").then((d) => setSessions(d.sessions)).catch((e) => setError(e.message));
+  const load = () => {
+    api.get("/sessions").then((d) => setSessions(d.sessions)).catch((e) => setError(e.message));
+    // Also refresh the shared term context so the TermSwitcher on other pages
+    // reflects any current-term/session changes made here.
+    reloadTerms();
+  };
   useEffect(() => { load(); }, []);
 
   const setCurrentSession = async (id) => {

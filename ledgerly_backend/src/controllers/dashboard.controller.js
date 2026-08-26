@@ -68,9 +68,9 @@ async function getDashboard(req, res) {
     else outstanding++;
   }
 
-  const { rows: incomeRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'income' AND reversed = 0`, [tenantId]);
+  const { rows: incomeRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'income' AND reversed = 0 AND term_id = ?`, [tenantId, termId]);
   const otherIncome = incomeRows[0].v;
-  const { rows: expenseRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'expense' AND reversed = 0`, [tenantId]);
+  const { rows: expenseRows } = await db.query(`SELECT COALESCE(SUM(amount),0) AS v FROM transactions WHERE tenant_id = ? AND type = 'expense' AND reversed = 0 AND term_id = ?`, [tenantId, termId]);
   const expenditure = expenseRows[0].v;
 
   res.json({

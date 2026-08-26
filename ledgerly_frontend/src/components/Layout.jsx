@@ -16,7 +16,7 @@ export default function Layout({ children }) {
       <header className="app-header">
         <div className="app-header-inner">
           <div className="app-brand-block">
-            <img src="/ledgerly-logo.jpg" alt="Ledgerly" className="app-logo" />
+            <img src="/app-icon.jpg" alt="Ledgerly" className="app-logo" />
             <div className="app-brand-text">
               <div className="app-brand">Ledgerly</div>
               {schoolName && <div className="app-school-name">{schoolName}</div>}

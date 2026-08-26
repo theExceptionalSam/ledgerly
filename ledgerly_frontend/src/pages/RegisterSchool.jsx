@@ -37,7 +37,7 @@ export default function RegisterSchool() {
     <div className="auth-page">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-logo.jpg" alt="Ledgerly" className="auth-logo" />
+          <img src="/ledgerly-wordmark.jpg" alt="Ledgerly" className="auth-wordmark" />
         </div>
         <h1>Register your school</h1>
         <p className="auth-sub">Creates your school's account and your owner login.</p>
