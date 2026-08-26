@@ -61,18 +61,27 @@ const UNICODE_FONTS = {
 function registerUnicodeFonts(doc) {
   const available = {};
   for (const [key, def] of Object.entries(UNICODE_FONTS)) {
-    if (fs.existsSync(def.path)) {
-      try {
+    try {
+      if (fs.existsSync(def.path)) {
         doc.registerFont(def.name, def.path);
         available[key] = def.name;
-      } catch (e) {
+      } else {
         available[key] = def.fallback;
       }
-    } else {
+    } catch (e) {
       available[key] = def.fallback;
     }
   }
   return available;
+}
+
+// Format amount for display. Uses ₦ if Unicode fonts are available,
+// otherwise falls back to "NGN" text (avoids the broken-bar character
+// that pdfkit's WinAnsi encoding produces for ₦).
+function formatNaira(amount, hasUnicodeFonts) {
+  const v = Number(amount) || 0;
+  const formatted = v.toLocaleString("en-NG", { maximumFractionDigits: 0 });
+  return hasUnicodeFonts ? `₦${formatted}` : `NGN ${formatted}`;
 }
 
 // ---- Formatting helpers -----------------------------------------------------
@@ -132,11 +141,7 @@ function numberToWords(n) {
   return parts.join(' ');
 }
 
-/** Format an amount as "₦15,000" (thousands separators, no decimals). */
-function formatNaira(amount) {
-  const n = Math.round(Number(amount) || 0);
-  return '₦' + n.toLocaleString('en-US');
-}
+// (formatNaira is defined above with Unicode-font awareness)
 
 /** Format an ISO date (or "YYYY-MM-DD") as "DD MMM YYYY". */
 function formatDate(dateStr) {
@@ -210,6 +215,7 @@ function generateReceiptPdf({
       doc.on('error', reject);
 
       const unicodeFonts = registerUnicodeFonts(doc);
+      const hasUnicodeFonts = unicodeFonts.sansBold !== 'Helvetica-Bold' && unicodeFonts.serifBold !== 'Times-Bold';
 
       // Normalise inputs (defensive — callers may pass partial objects).
       const tenantName = (tenant && tenant.name) || 'School';
@@ -313,7 +319,7 @@ function generateReceiptPdf({
       // ---- Details table (2 columns: label left, value right) ------------
       const rows = [
         ['Fee Head', feeHeadName || ''],
-        ['Amount Paid (figures)', formatNaira(amount)],
+        ['Amount Paid (figures)', formatNaira(amount, hasUnicodeFonts)],
         ['Amount Paid (in words)', numberToWords(amount) + ' Naira Only'],
         ['Payment Method', capitalizeMethod(method)],
         ['Date Paid', formatDate(paidOn)],
@@ -373,7 +379,7 @@ function generateReceiptPdf({
       doc.fillColor(COLORS.green)
         .font(unicodeFonts.serifBold)
         .fontSize(16)
-        .text(formatNaira(amount), MARGIN + 14, y + 11, {
+        .text(formatNaira(amount, hasUnicodeFonts), MARGIN + 14, y + 11, {
           align: 'right',
           width: CONTENT_WIDTH - 28,
         });

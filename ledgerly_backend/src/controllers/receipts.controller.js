@@ -102,8 +102,8 @@ async function issueReceipt(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
     res.send(pdfBuffer);
   }).catch((err) => {
-    console.error('[receipts] PDF generation failed:', err.message);
-    res.status(500).json({ error: 'Could not generate receipt PDF' });
+    console.error('[receipts] PDF generation failed:', err.message, err.stack);
+    res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
   });
 }
 
