@@ -98,6 +98,7 @@ export default function AuditLog() {
   const [clearing, setClearing] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [query, setQuery] = useState("");
 
   const load = (newLimit) => {
     setLoading(true); setError("");
@@ -109,13 +110,31 @@ export default function AuditLog() {
   useEffect(() => { load(100); }, []);
   const loadMore = () => load(limit + 200);
 
+  // Client-side search across the enriched title + actor + details.
+  // Searches the full logs array (not just visible), so "Load more" expands
+  // the searchable pool.
+  const filtered = query.trim()
+    ? logs.filter((l) => {
+        const q = query.toLowerCase();
+        const { title } = describe(l);
+        const haystack = [
+          title,
+          l.actor_name || "",
+          l.action || "",
+          l.entity_type || "",
+          l.metadata ? JSON.stringify(Object.values(l.metadata)) : "",
+        ].join(" ").toLowerCase();
+        return haystack.includes(q);
+      })
+    : logs;
+
   const toggleSelect = (id) => {
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
   const toggleSelectAll = () => {
     setSelected((prev) => {
-      if (logs.every((l) => prev.has(l.id))) return new Set();
-      const n = new Set(prev); logs.forEach((l) => n.add(l.id)); return n;
+      if (filtered.length > 0 && filtered.every((l) => prev.has(l.id))) return new Set();
+      const n = new Set(prev); filtered.forEach((l) => n.add(l.id)); return n;
     });
   };
 
@@ -153,8 +172,14 @@ export default function AuditLog() {
       {notice && <div className="form-error" style={{ background: "#E7F3EC", color: "#1B7A43", borderColor: "#C5E0CF" }}>{notice}</div>}
 
       <div className="toolbar audit-toolbar">
+        <input
+          className="search-input"
+          placeholder="Search audit log (name, action, amount…)"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <label className="select-all-chip">
-          <input type="checkbox" checked={logs.length > 0 && logs.every((l) => selected.has(l.id))} onChange={toggleSelectAll} />
+          <input type="checkbox" checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))} onChange={toggleSelectAll} />
           Select all
         </label>
         <div className="audit-toolbar-actions">
@@ -169,10 +194,10 @@ export default function AuditLog() {
         </div>
       </div>
 
-      {logs.length === 0 && <div className="empty-state">No activity recorded yet.</div>}
+      {filtered.length === 0 && <div className="empty-state">{query ? "No entries match your search." : "No activity recorded yet."}</div>}
 
       <div className="list">
-        {logs.map((l) => {
+        {filtered.map((l) => {
           const { title, details } = describe(l);
           const color = actionColor[l.action] || "#5B5B54";
           const isSelected = selected.has(l.id);
