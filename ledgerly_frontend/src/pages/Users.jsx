@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import ChangePasswordModal from "../components/ChangePasswordModal";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
   const [error, setError] = useState("");
 
   const load = () => api.get("/users").then((d) => setUsers(d.users)).catch((e) => setError(e.message));
@@ -24,12 +26,20 @@ export default function Users() {
     } catch (e) { setError(e.message); }
   };
 
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Remove ${u.name} (${u.email}) from the school? This cannot be undone.`)) return;
+    try {
+      await api.del(`/users/${u.id}`);
+      load();
+    } catch (e) { setError(e.message); }
+  };
+
   return (
     <div>
       <div className="page-intro">Manage staff accounts for your school. Invite bursars, accountants, and assistants.</div>
       {error && <div className="form-error">{error}</div>}
       <div className="toolbar">
-        <div></div>
+        <button className="btn-ghost" onClick={() => setShowChangePw(true)}>Change password</button>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Invite user</button>
       </div>
 
@@ -55,8 +65,15 @@ export default function Users() {
                       <option value="accountant">Accountant</option>
                       <option value="assistant">Assistant</option>
                     </select>
-                    <button className="btn-danger-ghost" onClick={() => toggleStatus(u)}>
+                    <button className="btn-ghost" onClick={() => toggleStatus(u)}>
                       {u.status === "active" ? "Disable" : "Enable"}
+                    </button>
+                    <button
+                      className="btn-danger-ghost"
+                      onClick={() => deleteUser(u)}
+                      title={`Remove ${u.name} from the school`}
+                    >
+                      Delete
                     </button>
                   </>
                 )}
@@ -67,6 +84,7 @@ export default function Users() {
       </div>
 
       {showAdd && <AddUserModal onClose={() => setShowAdd(false)} onDone={load} />}
+      {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
     </div>
   );
 }

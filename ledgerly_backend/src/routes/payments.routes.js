@@ -14,7 +14,7 @@ router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('method').optional().isIn(['cash', 'bank_transfer', 'pos', 'cheque', 'online']),
   body('note').optional({ checkFalsy: true }).trim().isLength({ max: 300 }),
   body('paidOn').isISO8601(),
-  body('idempotencyKey').optional().isLength({ max: 100 }),
+  body('idempotencyKey').optional().isLength({ max: 200 }),
   body('feeHeadId').isUUID(),
   body('termId').optional().isUUID(),
 ], validate, asyncHandler(ctrl.recordPayment));

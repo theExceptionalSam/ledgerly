@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import ChangePasswordModal from "./ChangePasswordModal";
 
 export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
   const navigate = useNavigate();
+  const [showChangePw, setShowChangePw] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -23,7 +26,10 @@ export default function Layout({ children }) {
             </div>
           </div>
           {user && (
-            <button className="btn-ghost-dark" onClick={handleLogout}>Log out</button>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button className="btn-ghost-dark" onClick={() => setShowChangePw(true)}>Change password</button>
+              <button className="btn-ghost-dark" onClick={handleLogout}>Log out</button>
+            </div>
           )}
         </div>
         {user && (
@@ -45,6 +51,7 @@ export default function Layout({ children }) {
       <main className="app-main">
         {children}
       </main>
+      {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
     </div>
   );
 }

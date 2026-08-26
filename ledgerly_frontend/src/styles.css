@@ -68,6 +68,15 @@ button { font: inherit; cursor: pointer; }
   font-weight: 600;
 }
 .btn-ghost-dark:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-ghost {
+  background: transparent;
+  color: var(--navy);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+.btn-ghost:hover { background: #F6F6F3; border-color: var(--navy); }
 .btn-danger-ghost {
   background: transparent;
   color: var(--red);
