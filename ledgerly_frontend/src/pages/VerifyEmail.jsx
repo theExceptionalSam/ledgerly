@@ -43,7 +43,7 @@ export default function VerifyEmail() {
     <div className="auth-page">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-wordmark.jpg" alt="Ledgerly" className="auth-wordmark" />
+          <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
         </div>
         <h1>Verify your email</h1>
         <p className="auth-sub">We sent a 6-digit code to your school email. Enter it below to activate your account.</p>
