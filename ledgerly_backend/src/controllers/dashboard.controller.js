@@ -40,15 +40,23 @@ async function getDashboard(req, res) {
   const collected = collectedRows[0].collected;
 
   // Per-student status counts for this term.
+  // Uses a LEFT JOIN against a pre-aggregated payments subquery instead of a
+  // correlated subquery — Postgres (unlike SQLite) forbids correlated subqueries
+  // from referencing non-grouped columns in a GROUP BY query.
   const { rows: perStudent } = await db.query(`
     SELECT sfa.student_id,
       SUM(sfa.expected_amount - sfa.discount_amount) AS expected,
-      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-       WHERE p.student_id = sfa.student_id AND p.term_id = sfa.term_id AND p.reversed = 0) AS paid
+      COALESCE(ps.paid, 0) AS paid
     FROM student_fee_assignments sfa
+    LEFT JOIN (
+      SELECT student_id, SUM(amount) AS paid
+      FROM payments
+      WHERE tenant_id = ? AND term_id = ? AND reversed = 0
+      GROUP BY student_id
+    ) ps ON ps.student_id = sfa.student_id
     WHERE sfa.tenant_id = ? AND sfa.term_id = ?
-    GROUP BY sfa.student_id
-  `, [tenantId, termId]);
+    GROUP BY sfa.student_id, ps.paid
+  `, [tenantId, termId, tenantId, termId]);
 
   let fullyPaid = 0, partial = 0, outstanding = 0;
   for (const s of perStudent) {
