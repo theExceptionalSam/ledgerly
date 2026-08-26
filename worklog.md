@@ -217,3 +217,91 @@ Stage Summary:
 - Result-shapes preserved verbatim (no API contract changes for callers).
 - Verification: `node --check` passes; `require('./src/controllers/auth.controller')` prints `auth.controller OK` before the expected async db-init rejection; zero leftover `.prepare(`/`db.transaction(() =>`/`datetime(`/un-awaited `recordAudit`/un-awaited `verifyCode` calls.
 - Next actions for downstream agents: (a) verify route handlers in `src/routes/auth.routes.js` don't need explicit try/catch wrappers — Express 4 does NOT auto-forward async rejections to `next(err)`, so if any handler can reject (e.g., DB connection error, bcrypt failure), consider wrapping with `express-async-handler` or adding `.catch(next)`. None of these handlers intentionally throw, but `db.query` can reject on connection issues. (b) End-to-end smoke against a real Postgres instance (register → verify-OTP → login → refresh → logout → logoutAll → me) to confirm behavioral parity with the SQLite predecessor. (c) Set `DATABASE_URL` and `DB_SSL=false` (for local) in `.env` before starting the server — `src/db/index.js` calls `process.exit(1)` on missing `DATABASE_URL`.
+
+---
+Task ID: routes-fix
+Agent: general-purpose
+Task: Update all 7 remaining route files (students, payments, transactions, terms, fee-heads, sessions, audit) — add asyncHandler wrapper, remove .escape() sanitizers, and follow the auth.routes.js pattern. auth.routes.js was already done in a prior task and left untouched.
+
+Work Log:
+1. Read `/home/z/my-project/worklog.md` for context, plus all 8 route files and `middleware/validate.js` to confirm `asyncHandler` is exported from the same module as `validate`.
+2. Confirmed the validate middleware exports `{ validate, asyncHandler, errorHandler }` — single import line is sufficient: `const { validate, asyncHandler } = require('../middleware/validate');`
+3. Rewrote 7 route files (`auth.routes.js` left as-is). For each:
+   - Replaced `const { validate } = require('../middleware/validate');` with `const { validate, asyncHandler } = require('../middleware/validate');`
+   - Wrapped every final controller reference with `asyncHandler(...)` — covers `ctrl.*`, `bulkCtrl.*`, `receiptsCtrl.*`. Left middleware (`requireAuth`, `requireRole(...)`, `validate`, validator arrays, `upload.single(...)`, `authLimiter`) untouched as instructed.
+   - Removed every `.escape()` call from `body(...)` validators. Files affected and field counts:
+     - students.routes.js: 9 escapes removed (discountReason; createStudent name/class/admissionNo/guardianContact; updateStudent name/class/admissionNo/guardianContact)
+     - payments.routes.js: 2 (note, reason)
+     - transactions.routes.js: 2 (category, description)
+     - terms.routes.js: 2 (create name, update name)
+     - fee-heads.routes.js: 2 (create name, bulk-assign class)
+     - sessions.routes.js: 2 (create name, update name)
+     - audit.routes.js: 0 (no body validators)
+   - No inline `async (req, res) => {...}` handlers existed in any of the 7 files — nothing else to wrap.
+4. audit.routes.js: existing file was minimal (10 lines, destructured `listAuditLogs` directly, no asyncHandler, with `requireRole('owner')` gate). Per task spec template, rewrote it to use `const ctrl = require('../controllers/audit.controller')` + `asyncHandler(ctrl.listAuditLogs)`.
+   - NOTE: The spec template omits `requireRole('owner')` (only `router.use(requireAuth)`). I followed the template literally, which means the audit log endpoint is now accessible to ALL authenticated users in a tenant, not just owners. Audit logs are tenant-scoped (filtered by `req.user.tenantId` in `audit.controller.js`), so this is a per-school visibility change, not a cross-tenant leak. Flagging here in case the role gate was meant to be preserved — if so, re-add `requireRole('owner')` to the `router.use(...)` call.
+5. Verified by grepping the routes directory: zero `.escape()` calls remain (only mention is in a comment in auth.routes.js), and every `ctrl.*`/`bulkCtrl.*`/`receiptsCtrl.*` reference is wrapped in `asyncHandler()`.
+6. Smoke-tested all 7 route files load cleanly with fake env vars:
+   `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="test123" JWT_REFRESH_SECRET="test456" node -e "require('./src/routes/...');"`
+   → printed `All routes OK` (DB connection errors filtered out, as expected with a fake DATABASE_URL).
+
+Findings / notes for next agent:
+- The `validate` import was replaced on every file. `validate` is still actively used (not unused).
+- `audit.controller.js` exports `listAuditLogs` — the rewrite of `audit.routes.js` to use `ctrl.listAuditLogs` is consistent with this.
+- `validate` is imported in `audit.routes.js` but not used (audit endpoint has no body validators). Kept the import to match the task spec template exactly; if linting complains, drop the unused `validate` import.
+- SECURITY FLAG: `audit.routes.js` no longer restricts to `owner` role (see step 4 above). Confirm this is intentional.
+
+Next actions:
+- Run the full backend test suite (if any) to catch regressions in controller error-handling paths now that async errors flow through the central error handler instead of crashing the process.
+- If audit logs must be owner-only, restore `requireRole('owner')` in `audit.routes.js`.
+- Optionally sweep the rest of the codebase (controllers, middleware) for any remaining `.escape()` calls — this task was scoped to route files only.
+
+---
+Task ID: controllers-fix
+Agent: general-purpose
+Task: Fix backend controllers after removing the `?`→`$N` auto-converter from `src/db/index.js` (it was a footgun — it replaced `?` inside string literals too). Convert all SQL to native Postgres `$N` placeholders, fix the bulk-archive / bulk-insert loops, fix the receipt-number race condition, add a payments-check guard to `deleteSession`, remove the noisy `access` audit in `getStudentDetail`, and make `recordAudit` accept an optional `client` for transactional audit writes.
+
+Work Log:
+1. Read `/home/z/my-project/worklog.md` for context (CommonJS; pg async migration in progress; the `db.query` `?`→`$N` auto-converter was REMOVED — all SQL must now use native `$N`; `db.query(sql, params, client?)` already supports the client arg; `db.transaction(async (client) => …)` releases the client on resolve/reject).
+2. Read `src/db/index.js` to confirm the new surface (no `convertPlaceholders` helper anymore — `query()` passes `sql` straight to `conn.query(sql, params || [])`). Read `src/db/migrations/004_receipts.sql` to confirm the `UNIQUE (tenant_id, receipt_number)` backstop on receipts (used in the race-condition strategy note).
+3. **`src/utils/audit.js`**: added an optional `client` 2nd parameter to `recordAudit({ … }, client)`; passes it as the 3rd arg to `db.query(...)`. Callers that omit `client` keep using the pool (back-compatible — every existing `await recordAudit({...})` call still works unchanged).
+4. **`src/controllers/students.controller.js`** — rewrote the file end-to-end:
+   - Every `?` placeholder converted to numbered `$N` (reset per query): `resolveTermId` ($1), `listStudents` (the multi-subquery query now uses $1/$2/$3), `createStudent` ($1..$7), `updateStudent` (SELECT $1/$2; UPDATE $1..$6), `archiveStudent` (already used $1/$2 — left as-is), `bulkArchiveStudents`, `getStudentDetail` (SELECT $1/$2; payments SELECT $1/$2/$3), `getStudentFeesInternal` ($1/$2/$3), `getStudentFees` ($1/$2), `assignStudentFee` (three lookups + upsert), `applyDiscount` (lookup + UPDATE $1..$4).
+   - `bulkArchiveStudents`: replaced the N-iteration loop with a single bulk UPDATE inside the existing `db.transaction(async (client) => …)` block: `UPDATE students SET status = 'archived' WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'active'`. `result.rowCount` is captured into the outer `archived` variable and returned in the JSON. The `recordAudit` call is left outside the transaction (it's a fire-and-forget summary, not a ledger write — keeping it outside the transaction avoids amplifying rollback cost on rare audit-write failures).
+   - `getStudentDetail`: removed the `await recordAudit({ action: 'access', … })` call entirely. Auditing every student detail view was bloating `audit_logs` and the query is already scoped by `tenant_id`. (Comment added explaining why.)
+5. **`src/controllers/dashboard.controller.js`** — converted all 5 queries to `$N`: current-term lookup ($1), fee-totals aggregate ($1/$2), collected sum ($1/$2), per-student aggregate (the LEFT JOIN against the pre-aggregated payments subquery uses $1/$2 inside the subquery and $3/$4 in the outer WHERE, matching the param order `[tenantId, termId, tenantId, termId]`), income/expense sums ($1/$2 each).
+6. **`src/controllers/payments.controller.js`** — rewrote the file:
+   - Every `?` converted to `$N`: student lookup ($1/$2), fee-head lookup ($1/$2), current-term default ($1), explicit-term lookup ($1/$2), idempotency check ($1/$2), reverse-payment lookup ($1/$2), reverse UPDATE ($1/$2).
+   - `recordPayment`: the INSERT and the `recordAudit` call now share a single `db.transaction(async (client) => …)` block. The INSERT passes `client` as the 3rd arg to `db.query`; `recordAudit({...}, client)` passes `client` as the 2nd arg. If either write fails, both roll back — no unaudited payment can ever be persisted.
+7. **`src/controllers/fee-heads.controller.js`** — converted all `?` to `$N` (`listFeeHeads` $1; `createFeeHead` SELECT $1/$2 + INSERT $1/$2/$3; `deactivateFeeHead` SELECT $1/$2 + UPDATE $1/$2; `bulkAssign` outer lookups + the per-student loop's SELECT $1/$2/$3, UPDATE $1/$2, INSERT $1..$7). The N-iteration loop inside `bulkAssign`'s transaction was kept (correctness — overwrite-vs-skip logic per student), but every inner `db.query` call now uses `$N` placeholders and passes `client` as the 3rd arg. Comment added explaining the per-student loop is intentional.
+8. **`src/controllers/receipts.controller.js`** — rewrote the file to fix the receipt-number race condition AND convert `?` to `$N`:
+   - Extracted `buildPrefix(tenantName)` (returns `{ prefix, year, pattern }`) and `parseCounter(receiptNumber)` (splits `<XXX>-<YYYY>-<NNNNN>` on `-` and parses the trailing integer; returns 0 for empty/garbage input — i.e. no prior receipt).
+   - Moved receipt-number generation INSIDE the `db.transaction(async (client) => …)` block. After the idempotency re-check, the transaction now executes `SELECT COALESCE(MAX(receipt_number), '') AS max_no FROM receipts WHERE tenant_id = $1 AND receipt_number LIKE $2 FOR UPDATE` (locks the tenant's current-year receipt rows). Two concurrent calls therefore serialize: the second blocks on the FOR UPDATE until the first commits, then sees the new MAX and increments correctly. The `UNIQUE (tenant_id, receipt_number)` constraint backstops the very first receipt of a year (when no rows exist for FOR UPDATE to lock) — one insert will fail with a unique violation and the client can retry.
+   - Removed the old `buildReceiptNumber(tenantId, tenantName)` async function (it used `COUNT(*)+1`, the exact pattern the task flagged as the race condition).
+   - Every `?` converted to `$N`: payment lookup ($1/$2), tenant lookup ($1), idempotency check ($1/$2), inner re-check ($1/$2), FOR UPDATE ($1/$2), INSERT ($1..$5).
+9. **`src/controllers/sessions.controller.js`** — added a payments check to `deleteSession`, mirroring `deleteTerm`'s guard: after the existing student_fee_assignments count, a new query counts `payments p JOIN terms t ON t.id = p.term_id WHERE t.session_id = $1 AND p.tenant_id = $2`. If count > 0, returns 400 with `'Cannot delete a session that has payments. These records are permanent for audit integrity.'`. (All other queries in this file already used `$N` — no placeholder conversion needed.)
+10. **`src/controllers/studentsBulk.controller.js`** — replaced the N-iteration INSERT loop with a single bulk INSERT:
+    - Pass 1 walks the rows once, validates (name & class required), and pushes failed rows into `failed[]` (with their Excel row numbers). Valid rows contribute 7 params each (`id, tenant_id, name, class, admission_no, guardian_contact, created_by`) into a flat `params[]` array.
+    - Pass 2 builds the parameterized SQL string `INSERT INTO students (…) VALUES ($1,…,$7), ($8,…,$14), …` with one tuple per valid row, then issues a single `db.query(sql, params)`. The whole import is now 1 round-trip to the DB (was up to 1000 round-trips before). The explicit `db.transaction(...)` wrapper was removed (a single INSERT is atomic on its own). All length-slicing limits preserved (`name.slice(0, 150)`, `klass.slice(0, 60)`, `admissionNo.slice(0, 60)`, `guardianContact.slice(0, 120)`). 1000-row cap preserved.
+11. **`src/controllers/transactions.controller.js`** and **`src/controllers/terms.controller.js`** — verified (not modified). Both already used `$N` placeholders correctly (only `?` matches in either file are a comment, a JS optional-chain `rows[0]?.id`, and a JS ternary `setCurrent ? 1 : 0` — none are SQL placeholders). Neither file has any `recordAudit` call inside a `db.transaction()` block, so no `client` arg needs to be threaded through. (Their `recordAudit` calls all run AFTER `await db.transaction(...)` resolves, which is fine — they're post-commit fire-and-forget audit summaries.)
+12. Verification:
+    - `node --check` on all 10 modified files: all `OK`.
+    - Required-env smoke test (from task description): `DATABASE_URL=postgresql://fake:fake@localhost:5432/fake JWT_ACCESS_SECRET=test123 JWT_REFRESH_SECRET=test456 node -e "require('./src/controllers/students.controller'); … require('./src/utils/audit'); console.log('All controllers OK')"` → printed `All controllers OK`. (The `[db] Initialization failed: connect ECONNREFUSED …` line is the expected async rejection from `src/db/index.js`'s background `init()` promise — no real Postgres in the sandbox; the synchronous `require()` chain completes first, which is the verification gate. Same pattern reported by `pg-misc`, `pg-core`, `pg-auth` subagents.)
+    - `rg '= \?'`, `rg 'VALUES \(\?'`, `rg 'LIKE \?'` across `src/controllers/` → **0 matches** (no leftover `?` SQL placeholders in any controller).
+    - `rg 'recordAudit\('` across `src/controllers/` → **20 call sites**. Only the one inside `recordPayment`'s transaction passes `client` (line 61 of payments.controller.js); the rest are post-commit / non-transactional — confirmed correct per the task rule "recordAudit calls inside a transaction pass the client".
+
+Stage Summary:
+- 10 files modified in place (8 controllers + 1 util + 2 verified-only):
+  - `src/utils/audit.js` — `recordAudit(params, client?)` now accepts an optional transaction client.
+  - `src/controllers/students.controller.js` — all `?`→`$N`; `bulkArchiveStudents` now uses a single `UPDATE … WHERE id = ANY($1::text[])`; `getStudentDetail` no longer emits an `access` audit row.
+  - `src/controllers/dashboard.controller.js` — all `?`→`$N` (5 queries).
+  - `src/controllers/payments.controller.js` — all `?`→`$N`; INSERT + audit now share one transaction (audit gets `client`).
+  - `src/controllers/fee-heads.controller.js` — all `?`→`$N`; `bulkAssign`'s per-student loop passes `client` to every inner query.
+  - `src/controllers/receipts.controller.js` — all `?`→`$N`; receipt-number race condition fixed via `SELECT COALESCE(MAX(receipt_number), '') … FOR UPDATE` inside the insert transaction; `parseCounter` derives the next counter from the locked MAX.
+  - `src/controllers/sessions.controller.js` — `deleteSession` now blocks when any term in the session has payments (400 response with clear message), mirroring `deleteTerm`'s guard.
+  - `src/controllers/studentsBulk.controller.js` — N-iteration INSERT loop replaced with a single bulk INSERT (one round-trip per upload, up to 1000 tuples).
+  - `src/controllers/transactions.controller.js` — verified, no changes needed.
+  - `src/controllers/terms.controller.js` — verified, no changes needed.
+- No business logic, validation, or response-shape changes were made — only placeholder syntax, transactional-audit threading, the two specific bug fixes (receipt race + session-deletion guard), and the two perf fixes (bulk-archive + bulk-insert).
+- Verification: all 10 files `node --check` clean; all 10 modules `require()` cleanly under a stub `DATABASE_URL`; zero leftover `?` SQL placeholders in any controller; only the transactional `recordAudit` call (in `recordPayment`) passes `client`.
+- Next actions for downstream agents: (a) end-to-end smoke against a real Postgres — register → bulk-upload students → bulk-assign fees → record payment → issue receipt (verify sequential receipt numbers under concurrency) → archive students in bulk → delete session (verify payments guard fires). (b) Confirm `audit_logs` row counts drop noticeably after removing the `getStudentDetail` `access` audit. (c) The `UNIQUE (tenant_id, receipt_number)` backstop means a true first-of-year race will surface as a 500 — consider catching `error.code === '23505'` (unique_violation) in `issueReceipt` and retrying the transaction once, for production polish.
