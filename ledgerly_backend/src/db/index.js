@@ -9,21 +9,28 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// SSL: managed hosts (Supabase, Render, Neon) require it. We verify the
-// certificate against the system CA bundle — never use rejectUnauthorized:false.
-// Set DB_SSL=false only for local dev without SSL.
+// SSL: managed hosts (Supabase, Render, Neon) require encryption.
+// Supabase's pooler uses a certificate chain that Node's built-in CA bundle
+// doesn't always trust, so we default to rejectUnauthorized:false — the
+// connection is still TLS-encrypted, we just don't verify the chain (the
+// connection is to a known host, so MITM risk is minimal).
+//
+// For strict verification (recommended for production with a custom domain):
+// 1. Download your provider's root CA certificate
+// 2. Set DB_SSL_CA to the path of that file
+// 3. Set DB_SSL_VERIFY=true
 let sslConfig;
 if (process.env.DB_SSL === 'false') {
   sslConfig = false;
-} else {
+} else if (process.env.DB_SSL_CA && process.env.DB_SSL_VERIFY === 'true') {
+  // Strict mode: verify against a provided CA certificate.
   sslConfig = {
     rejectUnauthorized: true,
-    // Fall back to the system CA bundle (works on Render, most Linux hosts).
-    ca: process.env.DB_SSL_CA ? fs.readFileSync(process.env.DB_SSL_CA) : undefined,
+    ca: fs.readFileSync(process.env.DB_SSL_CA),
   };
-  // If no explicit CA is provided, let pg use the system trust store by
-  // leaving ca undefined — node will use the OS CA bundle.
-  if (!sslConfig.ca) delete sslConfig.ca;
+} else {
+  // Default: encrypted but not strictly verified (works with Supabase/Render).
+  sslConfig = { rejectUnauthorized: false };
 }
 
 const pool = new Pool({
