@@ -81,5 +81,6 @@ router.put('/:id', requireRole('owner', 'bursar', 'accountant'), [
 ], validate, asyncHandler(ctrl.updateStudent));
 
 router.delete('/:id', requireRole('owner', 'bursar'), [param('id').isUUID()], validate, asyncHandler(ctrl.archiveStudent));
+router.post('/:id/restore', requireRole('owner', 'bursar'), [param('id').isUUID()], validate, asyncHandler(ctrl.restoreStudent));
 
 module.exports = router;

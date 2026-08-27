@@ -28,6 +28,7 @@ export default function Students() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("fees");
   const [selected, setSelected] = useState(new Set());
+  const [viewArchived, setViewArchived] = useState(false);
 
   const canEdit = ["owner", "bursar", "accountant"].includes(user.role);
   const canDelete = ["owner", "bursar"].includes(user.role);
@@ -37,11 +38,14 @@ export default function Students() {
   const classes = [...new Set(students.map((s) => s.class))].sort();
 
   const load = () => {
-    if (!selectedTermId) return;
-    api.get(`/students?termId=${selectedTermId}`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+    if (viewArchived) {
+      api.get(`/students?status=archived`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+    } else if (selectedTermId) {
+      api.get(`/students?termId=${selectedTermId}`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+    }
   };
 
-  useEffect(() => { load(); }, [selectedTermId]);
+  useEffect(() => { load(); }, [selectedTermId, viewArchived]);
 
   useEffect(() => {
     api.get("/fee-heads").then((d) => setFeeHeads(d.feeHeads)).catch(() => {});
@@ -122,6 +126,11 @@ export default function Students() {
     load();
   };
 
+  const restore = async (id, name) => {
+    await api.post(`/students/${id}/restore`, {});
+    load();
+  };
+
   const openReceipt = (paymentId) => {
     api.openPdf(`/payments/${paymentId}/receipt`).catch((e) => alert(e.message));
   };
@@ -129,28 +138,40 @@ export default function Students() {
   return (
     <div>
       <TermSwitcher />
-      {!selectedTermId && <div className="empty-state">No term selected.</div>}
-      {selectedTermId && (
+      {(!selectedTermId && !viewArchived) && <div className="empty-state">No term selected.</div>}
+      {(selectedTermId || viewArchived) && (
         <>
           {error && <div className="form-error">{error}</div>}
           <div className="toolbar">
             <div className="toolbar-left">
               <input className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <select className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
-                <option value="all">All classes</option>
-                {classes.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              {!viewArchived && (
+                <select className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+                  <option value="all">All classes</option>
+                  {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
             </div>
-            {canEdit && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn-primary" onClick={() => api.download(`/students/export?termId=${selectedTermId}`, "students.csv")}>Export CSV</button>
-                <button className="btn-primary" onClick={() => setShowUpload(true)}>Upload Excel</button>
-                <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {canDelete && (
+                <button
+                  className={viewArchived ? "btn-primary" : "btn-ghost"}
+                  onClick={() => setViewArchived(!viewArchived)}
+                >
+                  {viewArchived ? "← Back to active" : `Archived`}
+                </button>
+              )}
+              {!viewArchived && canEdit && (
+                <>
+                  <button className="btn-primary" onClick={() => api.download(`/students/export?termId=${selectedTermId}`, "students.csv")}>Export CSV</button>
+                  <button className="btn-primary" onClick={() => setShowUpload(true)}>Upload Excel</button>
+                  <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
+                </>
+              )}
+            </div>
           </div>
 
-          {canDelete && selected.size > 0 && (
+          {!viewArchived && canDelete && selected.size > 0 && (
             <div className="bulk-bar">
               <span>{selected.size} selected</span>
               <button className="btn-danger-ghost" onClick={bulkArchive}>Remove selected</button>
@@ -158,31 +179,39 @@ export default function Students() {
             </div>
           )}
 
-          <div className="filter-row">
-            {canDelete && filtered.length > 0 && (
-              <label className="select-all-chip">
-                <input type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
-                Select all
-              </label>
-            )}
-            {["all", "paid", "partial", "outstanding", "unset"].map((f) => (
-              <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
-                {f === "all" ? "All" : f === "unset" ? "No fee set" : statusMeta[f].label}
-                <span className="chip-count">{counts[f]}</span>
-              </button>
-            ))}
-          </div>
+          {!viewArchived && (
+            <div className="filter-row">
+              {canDelete && filtered.length > 0 && (
+                <label className="select-all-chip">
+                  <input type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
+                  Select all
+                </label>
+              )}
+              {["all", "paid", "partial", "outstanding", "unset"].map((f) => (
+                <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
+                  {f === "all" ? "All" : f === "unset" ? "No fee set" : statusMeta[f].label}
+                  <span className="chip-count">{counts[f]}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-          {filtered.length === 0 && <div className="empty-state">No students match yet.</div>}
+          {viewArchived && (
+            <div className="page-intro" style={{ marginBottom: 14 }}>
+              Archived students are hidden from the active list and dashboard, but all their payment history and receipts are preserved. Click "Restore" to move a student back to active.
+            </div>
+          )}
+
+          {filtered.length === 0 && <div className="empty-state">{viewArchived ? "No archived students." : "No students match yet."}</div>}
 
           <div className="list">
             {filtered.map((s) => {
-              const meta = statusMeta[s.status];
+              const meta = statusMeta[s.status] || statusMeta.unset;
               const isOpen = expanded === s.id;
               return (
                 <div key={s.id} className="list-item">
                   <div className="list-item-row">
-                    {canDelete && (
+                    {canDelete && !viewArchived && (
                       <input
                         type="checkbox"
                         className="row-checkbox"
@@ -191,17 +220,23 @@ export default function Students() {
                         onChange={() => toggleSelect(s.id)}
                       />
                     )}
-                    <div className="list-item-main" onClick={() => setExpanded(isOpen ? null : s.id)}>
+                    <div className="list-item-main">
                       <div className="list-item-title">{s.name}</div>
                       <div className="list-item-sub">
                         {s.class}{s.admission_no ? " · " + s.admission_no : ""}
                         {s.guardian_contact ? " · Parent: " + s.guardian_contact : ""}
                       </div>
                     </div>
-                    <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : s.id)}>
-                      <span className="badge" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
-                      <div className="list-item-amount">{naira(s.paid)} / {naira(s.expected)}</div>
-                    </div>
+                    {viewArchived ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn-primary" onClick={() => restore(s.id, s.name)}>Restore</button>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : s.id)}>
+                        <span className="badge" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
+                        <div className="list-item-amount">{naira(s.paid)} / {naira(s.expected)}</div>
+                      </div>
+                    )}
                   </div>
 
                   {isOpen && detail && (

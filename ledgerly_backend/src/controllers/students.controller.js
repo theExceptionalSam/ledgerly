@@ -22,7 +22,20 @@ async function resolveTermId(tenantId, termId) {
 async function listStudents(req, res) {
   const { tenantId } = req.user;
   const termId = await resolveTermId(tenantId, req.query.termId);
-  if (!termId) return res.json({ students: [] });
+  const showArchived = req.query.status === 'archived';
+  if (!termId && !showArchived) return res.json({ students: [] });
+
+  // When viewing archived students, we don't need fee/payment totals — just
+  // the basic info. This keeps the query simple and fast.
+  if (showArchived) {
+    const { rows } = await db.query(`
+      SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact, s.status, s.created_at
+      FROM students s
+      WHERE s.tenant_id = $1 AND s.status = 'archived'
+      ORDER BY s.name ASC
+    `, [tenantId]);
+    return res.json({ students: rows });
+  }
 
   const { rows: students } = await db.query(`
     SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact,
@@ -94,6 +107,20 @@ async function archiveStudent(req, res) {
 
   await db.query(`UPDATE students SET status = 'archived' WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student', entityId: id, ipAddress: req.ip });
+  res.json({ ok: true });
+}
+
+// Restore an archived student back to active status. Financial history is
+// untouched — the student simply reappears in the active list.
+async function restoreStudent(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { id } = req.params;
+
+  const { rows } = await db.query(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2 AND status = 'archived'`, [id, tenantId]);
+  if (!rows[0]) return res.status(404).json({ error: 'Archived student not found' });
+
+  await db.query(`UPDATE students SET status = 'active' WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+  await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: { action: 'restored' } });
   res.json({ ok: true });
 }
 
@@ -243,4 +270,4 @@ async function applyDiscount(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listStudents, createStudent, updateStudent, archiveStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount };
+module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount };
