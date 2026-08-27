@@ -1,5 +1,5 @@
-const { Router, query } = require('express');
-const { body } = require('express-validator');
+const { Router } = require('express');
+const { body, query } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const ctrl = require('../controllers/audit.controller');
