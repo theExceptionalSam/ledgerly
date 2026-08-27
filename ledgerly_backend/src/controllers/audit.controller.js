@@ -1,12 +1,16 @@
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 
-// List audit logs with enriched context. For payment entries, JOINs with
-// payments → students + fee_heads so we can show the student name and fee head
-// name even for old entries that only stored UUIDs in the metadata.
+// List audit logs with enriched context. By default, only shows non-deleted
+// entries. Pass ?includeDeleted=true to see soft-deleted entries.
 async function listAuditLogs(req, res) {
   const { tenantId } = req.user;
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const showDeleted = req.query.deleted === 'true';
+
+  const deletedFilter = showDeleted
+    ? `AND a.deleted_at IS NOT NULL`
+    : `AND a.deleted_at IS NULL`;
 
   const { rows } = await db.query(`
     SELECT a.*,
@@ -24,23 +28,19 @@ async function listAuditLogs(req, res) {
     LEFT JOIN students s ON s.id = p.student_id
     LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
     LEFT JOIN transactions t ON t.id = a.entity_id AND a.entity_type = 'transaction'
-    WHERE a.tenant_id = $1
+    WHERE a.tenant_id = $1 ${deletedFilter}
     ORDER BY a.created_at DESC
     LIMIT $2
   `, [tenantId, limit]);
 
-  // Enrich each row: merge the JOINed data into the metadata so the frontend's
-  // describe() function can use it even if the original metadata only had UUIDs.
+  // Enrich metadata with JOINed data for old entries.
   const enriched = rows.map((row) => {
     const m = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
-    // For payment entries, add student/fee head names from the JOIN if the
-    // metadata doesn't already have them (old entries).
     if (row.entity_type === 'payment' && row.action === 'create') {
       if (!m.studentName && row.student_name) m.studentName = row.student_name;
       if (!m.feeHeadName && row.fee_head_name) m.feeHeadName = row.fee_head_name;
       if (m.amount == null && row.payment_amount != null) m.amount = Number(row.payment_amount);
     }
-    // For transaction entries, add category/type/amount from the JOIN.
     if (row.entity_type === 'transaction') {
       if (!m.category && row.tx_category) m.category = row.tx_category;
       if (!m.type && row.tx_type) m.type = row.tx_type;
@@ -52,17 +52,23 @@ async function listAuditLogs(req, res) {
   res.json({ logs: enriched });
 }
 
-// Bulk delete audit log entries — owner only.
+// Soft-delete audit log entries — sets deleted_at instead of hard-deleting.
 async function bulkDeleteAuditLogs(req, res) {
   const { tenantId, id: userId } = req.user;
   const { ids, before } = req.body;
   let deleted = 0;
 
   if (ids && Array.isArray(ids) && ids.length > 0) {
-    const result = await db.query(`DELETE FROM audit_logs WHERE tenant_id = $1 AND id = ANY($2::text[])`, [tenantId, ids]);
+    const result = await db.query(
+      `UPDATE audit_logs SET deleted_at = now() WHERE tenant_id = $1 AND id = ANY($2::text[]) AND deleted_at IS NULL`,
+      [tenantId, ids]
+    );
     deleted = result.rowCount;
   } else if (before) {
-    const result = await db.query(`DELETE FROM audit_logs WHERE tenant_id = $1 AND created_at < $2`, [tenantId, before]);
+    const result = await db.query(
+      `UPDATE audit_logs SET deleted_at = now() WHERE tenant_id = $1 AND created_at < $2 AND deleted_at IS NULL`,
+      [tenantId, before]
+    );
     deleted = result.rowCount;
   } else {
     return res.status(400).json({ error: 'Provide either ids array or before date' });
@@ -72,4 +78,21 @@ async function bulkDeleteAuditLogs(req, res) {
   res.json({ deleted });
 }
 
-module.exports = { listAuditLogs, bulkDeleteAuditLogs };
+// Restore soft-deleted audit log entries.
+async function restoreAuditLogs(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No IDs provided' });
+  }
+
+  const result = await db.query(
+    `UPDATE audit_logs SET deleted_at = NULL WHERE tenant_id = $1 AND id = ANY($2::text[]) AND deleted_at IS NOT NULL`,
+    [tenantId, ids]
+  );
+
+  res.json({ restored: result.rowCount });
+}
+
+module.exports = { listAuditLogs, bulkDeleteAuditLogs, restoreAuditLogs };

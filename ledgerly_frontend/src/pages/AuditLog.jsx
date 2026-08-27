@@ -99,68 +99,63 @@ export default function AuditLog() {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState("");
+  const [viewDeleted, setViewDeleted] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const load = (newLimit) => {
     setLoading(true); setError("");
-    api.get(`/audit-logs?limit=${newLimit}`).then((d) => {
+    const deletedParam = viewDeleted ? "&deleted=true" : "";
+    api.get(`/audit-logs?limit=${newLimit}${deletedParam}`).then((d) => {
       setLogs(d.logs); setLimit(newLimit); setSelected(new Set());
     }).catch((e) => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(100); }, []);
+  useEffect(() => { load(100); }, [viewDeleted]);
   const loadMore = () => load(limit + 200);
 
-  // Client-side search across the enriched title + actor + details.
-  // Searches the full logs array (not just visible), so "Load more" expands
-  // the searchable pool.
   const filtered = query.trim()
     ? logs.filter((l) => {
         const q = query.toLowerCase();
         const { title } = describe(l);
-        const haystack = [
-          title,
-          l.actor_name || "",
-          l.action || "",
-          l.entity_type || "",
-          l.metadata ? JSON.stringify(Object.values(l.metadata)) : "",
-        ].join(" ").toLowerCase();
+        const haystack = [title, l.actor_name || "", l.action || "", l.entity_type || "", l.metadata ? JSON.stringify(Object.values(l.metadata)) : ""].join(" ").toLowerCase();
         return haystack.includes(q);
       })
     : logs;
 
-  const toggleSelect = (id) => {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  };
-  const toggleSelectAll = () => {
-    setSelected((prev) => {
-      if (filtered.length > 0 && filtered.every((l) => prev.has(l.id))) return new Set();
-      const n = new Set(prev); filtered.forEach((l) => n.add(l.id)); return n;
-    });
-  };
+  const toggleSelect = (id) => { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
+  const toggleSelectAll = () => { setSelected((p) => { if (filtered.length > 0 && filtered.every((l) => p.has(l.id))) return new Set(); const n = new Set(p); filtered.forEach((l) => n.add(l.id)); return n; }); };
 
   const deleteSelected = async () => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (!window.confirm(`Delete ${ids.length} audit log entr${ids.length === 1 ? "y" : "ies"}? This cannot be undone.`)) return;
     setDeleting(true); setError("");
     try {
       const result = await api.post("/audit-logs/bulk-delete", { ids });
-      setNotice(`Deleted ${result?.deleted ?? 0} entr${(result?.deleted ?? 0) === 1 ? "y" : "ies"}.`);
+      setNotice(`Archived ${result?.deleted ?? 0} entr${(result?.deleted ?? 0) === 1 ? "y" : "ies"}.`);
       load(100);
-    } catch (e) { setError(e.message); }
-    finally { setDeleting(false); }
+    } catch (e) { setError(e.message); } finally { setDeleting(false); }
+  };
+
+  const restoreSelected = async () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setRestoring(true); setError("");
+    try {
+      const result = await api.post("/audit-logs/restore", { ids });
+      setNotice(`Restored ${result?.restored ?? 0} entr${(result?.restored ?? 0) === 1 ? "y" : "ies"}.`);
+      load(100);
+    } catch (e) { setError(e.message); } finally { setRestoring(false); }
   };
 
   const clearOldEntries = async () => {
-    if (!window.confirm("Delete all audit log entries older than 30 days?")) return;
+    if (!window.confirm("Archive all audit log entries older than 30 days?")) return;
     setClearing(true); setError(""); setNotice("");
     try {
       const before = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const result = await api.post("/audit-logs/bulk-delete", { before });
-      setNotice(`Deleted ${result?.deleted ?? 0} entr${(result?.deleted ?? 0) === 1 ? "y" : "ies"} older than 30 days.`);
+      setNotice(`Archived ${result?.deleted ?? 0} entr${(result?.deleted ?? 0) === 1 ? "y" : "ies"} older than 30 days.`);
       load(100);
-    } catch (e) { setError(e.message); }
-    finally { setClearing(false); }
+    } catch (e) { setError(e.message); } finally { setClearing(false); }
   };
 
   return (
@@ -172,29 +167,40 @@ export default function AuditLog() {
       {notice && <div className="form-error" style={{ background: "#E7F3EC", color: "#1B7A43", borderColor: "#C5E0CF" }}>{notice}</div>}
 
       <div className="toolbar audit-toolbar">
-        <input
-          className="search-input"
-          placeholder="Search audit log (name, action, amount…)"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <input className="search-input" placeholder="Search audit log (name, action, amount…)" value={query} onChange={(e) => setQuery(e.target.value)} />
         <label className="select-all-chip">
           <input type="checkbox" checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))} onChange={toggleSelectAll} />
           Select all
         </label>
         <div className="audit-toolbar-actions">
-          {selected.size > 0 && (
-            <button className="btn-danger-ghost" onClick={deleteSelected} disabled={deleting}>
-              {deleting ? "Deleting..." : `Delete ${selected.size} selected`}
+          {viewDeleted && selected.size > 0 && (
+            <button className="btn-primary" onClick={restoreSelected} disabled={restoring}>
+              {restoring ? "Restoring..." : `Restore ${selected.size} selected`}
             </button>
           )}
-          <button className="btn-danger-ghost" onClick={clearOldEntries} disabled={clearing || loading}>
-            {clearing ? "Clearing..." : "Clear old entries"}
+          {!viewDeleted && selected.size > 0 && (
+            <button className="btn-danger-ghost" onClick={deleteSelected} disabled={deleting}>
+              {deleting ? "Archiving..." : `Archive ${selected.size} selected`}
+            </button>
+          )}
+          {!viewDeleted && (
+            <button className="btn-danger-ghost" onClick={clearOldEntries} disabled={clearing || loading}>
+              {clearing ? "Clearing..." : "Clear old entries"}
+            </button>
+          )}
+          <button className={viewDeleted ? "btn-primary" : "btn-ghost"} onClick={() => setViewDeleted(!viewDeleted)}>
+            {viewDeleted ? "← Back to active" : "Archived"}
           </button>
         </div>
       </div>
 
-      {filtered.length === 0 && <div className="empty-state">{query ? "No entries match your search." : "No activity recorded yet."}</div>}
+      {viewDeleted && (
+        <div className="page-intro" style={{ marginBottom: 14, fontStyle: "italic" }}>
+          These entries have been archived. Select entries and click "Restore" to move them back to the active audit log.
+        </div>
+      )}
+
+      {filtered.length === 0 && <div className="empty-state">{viewDeleted ? "No archived entries." : (query ? "No entries match your search." : "No activity recorded yet.")}</div>}
 
       <div className="list">
         {filtered.map((l) => {
@@ -202,7 +208,7 @@ export default function AuditLog() {
           const color = actionColor[l.action] || "#5B5B54";
           const isSelected = selected.has(l.id);
           return (
-            <div key={l.id} className={"audit-entry" + (isSelected ? " selected" : "")}>
+            <div key={l.id} className={"audit-entry" + (isSelected ? " selected" : "") + (viewDeleted ? " archived" : "")}>
               <div className="audit-entry-top">
                 <input type="checkbox" className="row-checkbox" checked={isSelected} onChange={() => toggleSelect(l.id)} />
                 <div className="audit-entry-content">
@@ -210,6 +216,7 @@ export default function AuditLog() {
                     <span className="audit-dot" style={{ background: color }} />
                     <span className="audit-title">{title}</span>
                     {l.actor_name && <span className="audit-actor">by {l.actor_name}</span>}
+                    {viewDeleted && <span className="badge" style={{ color: "#5B5B54", background: "#EDECE6", marginLeft: 4 }}>Archived</span>}
                   </div>
                   {details.length > 0 && (
                     <div className="audit-details">
@@ -229,7 +236,7 @@ export default function AuditLog() {
         })}
       </div>
 
-      {logs.length >= limit && (
+      {filtered.length >= limit && (
         <div style={{ textAlign: "center", marginTop: 16 }}>
           <button className="btn-primary" onClick={loadMore} disabled={loading}>
             {loading ? "Loading..." : "Load more"}

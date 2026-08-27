@@ -215,6 +215,7 @@ button { font: inherit; cursor: pointer; }
   box-shadow: var(--shadow); padding: 14px 18px;
 }
 .audit-entry.selected { border-color: var(--navy); background: #F0F4FA; }
+.audit-entry.archived { opacity: 0.6; }
 .audit-entry-top { display: flex; align-items: flex-start; gap: 12px; }
 .audit-entry-content { flex: 1; min-width: 0; }
 .audit-entry-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

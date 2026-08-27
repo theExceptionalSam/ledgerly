@@ -14,4 +14,8 @@ router.post('/bulk-delete', [
   body('before').optional().isISO8601(),
 ], validate, asyncHandler(ctrl.bulkDeleteAuditLogs));
 
+router.post('/restore', [
+  body('ids').isArray({ min: 1 }),
+], validate, asyncHandler(ctrl.restoreAuditLogs));
+
 module.exports = router;
