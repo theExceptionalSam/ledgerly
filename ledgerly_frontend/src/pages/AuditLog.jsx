@@ -99,28 +99,30 @@ export default function AuditLog() {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [viewDeleted, setViewDeleted] = useState(false);
   const [restoring, setRestoring] = useState(false);
+
+  // Debounce search (500ms) — server-side search avoids loading 50,000 entries
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 500);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const load = (newLimit) => {
     setLoading(true); setError("");
     const deletedParam = viewDeleted ? "&deleted=true" : "";
-    api.get(`/audit-logs?limit=${newLimit}${deletedParam}`).then((d) => {
+    const searchParam = debouncedQuery ? `&search=${encodeURIComponent(debouncedQuery)}` : "";
+    api.get(`/audit-logs?limit=${newLimit}${deletedParam}${searchParam}`).then((d) => {
       setLogs(d.logs); setLimit(newLimit); setSelected(new Set());
     }).catch((e) => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(100); }, [viewDeleted]);
+  useEffect(() => { load(100); }, [viewDeleted, debouncedQuery]);
   const loadMore = () => load(limit + 200);
 
-  const filtered = query.trim()
-    ? logs.filter((l) => {
-        const q = query.toLowerCase();
-        const { title } = describe(l);
-        const haystack = [title, l.actor_name || "", l.action || "", l.entity_type || "", l.metadata ? JSON.stringify(Object.values(l.metadata)) : ""].join(" ").toLowerCase();
-        return haystack.includes(q);
-      })
-    : logs;
+  // Server already filtered — no client-side filtering needed
+  const filtered = logs;
 
   const toggleSelect = (id) => { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleSelectAll = () => { setSelected((p) => { if (filtered.length > 0 && filtered.every((l) => p.has(l.id))) return new Set(); const n = new Set(p); filtered.forEach((l) => n.add(l.id)); return n; }); };

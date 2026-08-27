@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { body, param } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -18,7 +18,13 @@ const upload = multer({
 const router = Router();
 router.use(requireAuth);
 
-router.get('/', asyncHandler(ctrl.listStudents));
+router.get('/', [
+  query('page').optional().isInt({ min: 1 }),
+  query('pageSize').optional().isInt({ min: 1, max: 200 }),
+  query('search').optional().trim(),
+  query('status').optional().isIn(['archived']),
+  query('termId').optional().isUUID(),
+], validate, asyncHandler(ctrl.listStudents));
 router.get('/bulk/template', asyncHandler(bulkCtrl.bulkTemplate));
 router.get('/export', asyncHandler(async (req, res) => {
   const db = require('../db');

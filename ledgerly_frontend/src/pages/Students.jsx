@@ -19,6 +19,10 @@ export default function Students() {
   const [filter, setFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [payFor, setPayFor] = useState(null);
@@ -34,18 +38,26 @@ export default function Students() {
   const canDelete = ["owner", "bursar"].includes(user.role);
   const isOwner = user.role === "owner";
 
-  // Unique class list from the loaded students (dynamic — reflects what's actually on record)
+  // Debounce search input (500ms) so we don't spam the server on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedQuery(query.trim()); setPage(1); }, 500);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const classes = [...new Set(students.map((s) => s.class))].sort();
 
   const load = () => {
     if (viewArchived) {
-      api.get(`/students?status=archived`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+      api.get(`/students?status=archived`).then((d) => { setStudents(d.students); setTotal(d.total || d.students.length); setTotalPages(1); }).catch((e) => setError(e.message));
     } else if (selectedTermId) {
-      api.get(`/students?termId=${selectedTermId}`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+      const searchParam = debouncedQuery ? `&search=${encodeURIComponent(debouncedQuery)}` : "";
+      api.get(`/students?termId=${selectedTermId}&page=${page}&pageSize=50${searchParam}`).then((d) => {
+        setStudents(d.students); setTotal(d.total || 0); setTotalPages(d.totalPages || 1);
+      }).catch((e) => setError(e.message));
     }
   };
 
-  useEffect(() => { load(); }, [selectedTermId, viewArchived]);
+  useEffect(() => { load(); }, [selectedTermId, viewArchived, page, debouncedQuery]);
 
   useEffect(() => {
     api.get("/fee-heads").then((d) => setFeeHeads(d.feeHeads)).catch(() => {});
@@ -290,6 +302,22 @@ export default function Students() {
               );
             })}
           </div>
+
+          {/* Pagination */}
+          {!viewArchived && totalPages > 1 && (
+            <div className="pagination">
+              <button className="btn-ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Prev</button>
+              <span className="pagination-info">
+                Page {page} of {totalPages} · {total} student{total === 1 ? "" : "s"}
+              </span>
+              <button className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next →</button>
+            </div>
+          )}
+          {!viewArchived && totalPages <= 1 && total > 0 && (
+            <div className="pagination-info" style={{ textAlign: "center", marginTop: 12, color: "var(--ink-soft)" }}>
+              {total} student{total === 1 ? "" : "s"}
+            </div>
+          )}
         </>
       )}
 

@@ -23,10 +23,9 @@ async function listStudents(req, res) {
   const { tenantId } = req.user;
   const termId = await resolveTermId(tenantId, req.query.termId);
   const showArchived = req.query.status === 'archived';
-  if (!termId && !showArchived) return res.json({ students: [] });
+  if (!termId && !showArchived) return res.json({ students: [], total: 0 });
 
-  // When viewing archived students, we don't need fee/payment totals — just
-  // the basic info. This keeps the query simple and fast.
+  // --- Archived view (no pagination needed — archived lists are small) ---
   if (showArchived) {
     const { rows } = await db.query(`
       SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact, s.status, s.created_at
@@ -34,9 +33,33 @@ async function listStudents(req, res) {
       WHERE s.tenant_id = $1 AND s.status = 'archived'
       ORDER BY s.name ASC
     `, [tenantId]);
-    return res.json({ students: rows });
+    return res.json({ students: rows, total: rows.length });
   }
 
+  // --- Active view with pagination ---
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(parseInt(req.query.pageSize, 10) || 50, 200);
+  const offset = (page - 1) * pageSize;
+  const search = req.query.search;
+
+  // Build the WHERE clause for search (server-side, case-insensitive)
+  let searchSql = '';
+  const params = [termId, termId, tenantId];
+  if (search && search.trim()) {
+    searchSql = ` AND (s.name ILIKE $4 OR s.class ILIKE $4 OR s.admission_no ILIKE $4 OR s.guardian_contact ILIKE $4)`;
+    params.push(`%${search.trim()}%`);
+  }
+
+  // Get total count for pagination
+  const countParams = search ? [tenantId, `%${search.trim()}%`] : [tenantId];
+  const countSql = search
+    ? `SELECT COUNT(*) AS total FROM students s WHERE s.tenant_id = $1 AND s.status = 'active' AND (s.name ILIKE $2 OR s.class ILIKE $2 OR s.admission_no ILIKE $2 OR s.guardian_contact ILIKE $2)`
+    : `SELECT COUNT(*) AS total FROM students s WHERE s.tenant_id = $1 AND s.status = 'active'`;
+  const { rows: countRows } = await db.query(countSql, countParams);
+  const total = parseInt(countRows[0].total, 10);
+
+  // Get the page of students
+  const pageParams = [...params, pageSize, offset];
   const { rows: students } = await db.query(`
     SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact,
       COALESCE((SELECT SUM(sfa.expected_amount - sfa.discount_amount)
@@ -46,9 +69,10 @@ async function listStudents(req, res) {
                 FROM payments p
                 WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0) AS paid
     FROM students s
-    WHERE s.tenant_id = $3 AND s.status = 'active'
+    WHERE s.tenant_id = $3 AND s.status = 'active'${searchSql}
     ORDER BY s.name ASC
-  `, [termId, termId, tenantId]);
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, pageParams);
 
   const withStatus = students.map(s => {
     const expected = Number(s.expected) || 0;
@@ -61,7 +85,7 @@ async function listStudents(req, res) {
     return { ...s, expected, paid, outstanding, status };
   });
 
-  res.json({ students: withStatus });
+  res.json({ students: withStatus, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
 }
 
 async function createStudent(req, res) {

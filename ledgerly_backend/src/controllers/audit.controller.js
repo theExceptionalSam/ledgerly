@@ -7,10 +7,29 @@ async function listAuditLogs(req, res) {
   const { tenantId } = req.user;
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
   const showDeleted = req.query.deleted === 'true';
+  const search = req.query.search;
 
   const deletedFilter = showDeleted
     ? `AND a.deleted_at IS NOT NULL`
     : `AND a.deleted_at IS NULL`;
+
+  // Server-side search across actor name, action, entity_type, and metadata.
+  // Searches the raw metadata JSON + joined entity names for full coverage.
+  let searchFilter = '';
+  const params = [tenantId];
+  if (search && search.trim()) {
+    searchFilter = ` AND (
+      u.name ILIKE $${params.length + 1} OR
+      a.action ILIKE $${params.length + 1} OR
+      a.entity_type ILIKE $${params.length + 1} OR
+      a.metadata::text ILIKE $${params.length + 1} OR
+      s.name ILIKE $${params.length + 1} OR
+      fh.name ILIKE $${params.length + 1} OR
+      t.category ILIKE $${params.length + 1}
+    )`;
+    params.push(`%${search.trim()}%`);
+  }
+  params.push(limit);
 
   const { rows } = await db.query(`
     SELECT a.*,
@@ -28,10 +47,10 @@ async function listAuditLogs(req, res) {
     LEFT JOIN students s ON s.id = p.student_id
     LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
     LEFT JOIN transactions t ON t.id = a.entity_id AND a.entity_type = 'transaction'
-    WHERE a.tenant_id = $1 ${deletedFilter}
+    WHERE a.tenant_id = $1 ${deletedFilter} ${searchFilter}
     ORDER BY a.created_at DESC
-    LIMIT $2
-  `, [tenantId, limit]);
+    LIMIT $${params.length}
+  `, params);
 
   // Enrich metadata with JOINed data for old entries.
   const enriched = rows.map((row) => {
