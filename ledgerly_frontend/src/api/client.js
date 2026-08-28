@@ -109,6 +109,7 @@ async function download(path, filename) {
 }
 
 // Authenticated PDF fetch — opens in a new browser tab (for receipts).
+// Uses an <a> element with target=_blank to avoid popup blocker issues.
 async function openPdf(path, retry = true) {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
@@ -121,7 +122,6 @@ async function openPdf(path, retry = true) {
     throw new Error("Session expired. Please sign in again.");
   }
   if (!res.ok) {
-    // Read the server's error message instead of a generic "Could not open PDF"
     let msg = "Could not open PDF";
     try {
       const body = await res.text();
@@ -132,7 +132,13 @@ async function openPdf(path, retry = true) {
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
-  window.open(url, "_blank");
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 

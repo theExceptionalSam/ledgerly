@@ -30,6 +30,9 @@ const AuditLog = lazy(() => import("./pages/AuditLog"));
 const Terms = lazy(() => import("./pages/Terms"));
 const FeeHeads = lazy(() => import("./pages/FeeHeads"));
 const Users = lazy(() => import("./pages/Users"));
+const Reports = lazy(() => import("./pages/Reports"));
+const BrandingSettings = lazy(() => import("./pages/BrandingSettings"));
+const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 
 function PageLoader() {
   return <div className="page-loading">Loading…</div>;
@@ -82,6 +85,18 @@ export default function App() {
                   <Layout><AuditLog /></Layout>
                 </ProtectedRoute>
               } />
+              <Route path="/reports" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><Reports /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/branding" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><BrandingSettings /></Layout>
+                </ProtectedRoute>
+              } />
+              {/* Platform admin — separate auth (no ProtectedRoute) */}
+              <Route path="/admin" element={<PlatformAdmin />} />
             </Routes>
           </Suspense>
         </TermProvider>
