@@ -3,22 +3,16 @@ import { NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ChangePasswordModal from "./ChangePasswordModal";
 import { api } from "../api/client";
-
-// App shell — top brand bar, primary nav, optional notification bell, footer
-// with legal links. Used by every authenticated page via <Layout>{children}</Layout>.
-//
-// The notification bell only renders for signed-in users. It polls GET /notifications
-// on mount and exposes a dropdown with the most recent items. The footer renders on
-// every page (auth + public legal pages skip it via the legal-page CSS — they don't
-// use Layout) and carries Privacy / Terms / Security links.
+import { naira } from "../utils/format";
 
 export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
   const navigate = useNavigate();
   const [showChangePw, setShowChangePw] = useState(false);
   const [forceChangePw, setForceChangePw] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
 
-  // Check on mount if the user needs to change their password
   useEffect(() => {
     if (!user) return;
     api.get("/auth/me").then(() => {}).catch((err) => {
@@ -26,10 +20,24 @@ export default function Layout({ children }) {
     });
   }, [user]);
 
+  // Close "More" dropdown on outside click
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [moreOpen]);
+
   const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
+
+  const isOwner = user?.role === "owner";
+  const isOwnerOrBursar = isOwner || user?.role === "bursar";
+  const isOwnerOrAccountant = isOwner || user?.role === "accountant";
 
   return (
     <div className="app-shell">
@@ -45,6 +53,7 @@ export default function Layout({ children }) {
           </div>
           {user && (
             <div className="app-header-actions">
+              <GlobalSearch />
               <NotificationBell />
               <button className="btn-ghost-dark" onClick={() => setShowChangePw(true)}>Change password</button>
               <button className="btn-ghost-dark" onClick={handleLogout}>Log out</button>
@@ -53,26 +62,59 @@ export default function Layout({ children }) {
         </div>
         {user && (
           <nav className="app-nav">
+            {/* Core links — always visible */}
             <NavLink to="/" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Dashboard</NavLink>
             <NavLink to="/students" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Students</NavLink>
-            <NavLink to="/finance" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Income & Expenditure</NavLink>
+            <NavLink to="/finance" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Finance</NavLink>
             <NavLink to="/fee-heads" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Fee Heads</NavLink>
-            <NavLink to="/sessions" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Sessions & Terms</NavLink>
-            {user.role === "owner" && (
+            <NavLink to="/sessions" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Terms</NavLink>
+            {isOwner && (
               <NavLink to="/reports" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Reports</NavLink>
             )}
-            {user.role === "owner" && (
-              <NavLink to="/branding" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Branding</NavLink>
-            )}
-            {user.role === "owner" && (
+            {isOwner && (
               <NavLink to="/users" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Users</NavLink>
             )}
-            {user.role === "owner" && (
-              <NavLink to="/security" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Security</NavLink>
-            )}
-            {user.role === "owner" && (
-              <NavLink to="/audit-log" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Audit Log</NavLink>
-            )}
+
+            {/* More dropdown — advanced features */}
+            <div className="nav-more" ref={moreRef}>
+              <button
+                className={"nav-link" + (moreOpen ? " active" : "")}
+                onClick={() => setMoreOpen(!moreOpen)}
+              >
+                More ▾
+              </button>
+              {moreOpen && (
+                <div className="nav-more-dropdown">
+                  {isOwnerOrAccountant && (
+                    <NavLink to="/bank-reconciliation" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Bank Reconciliation</NavLink>
+                  )}
+                  {isOwnerOrBursar && (
+                    <NavLink to="/fee-templates" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Fee Templates</NavLink>
+                  )}
+                  {isOwnerOrBursar && (
+                    <NavLink to="/payment-plans" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Payment Plans</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/branding" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Receipt Branding</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/settings" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>School Settings</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/security" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Security & 2FA</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/webhooks" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Webhooks</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/data-requests" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Data & Privacy</NavLink>
+                  )}
+                  {isOwner && (
+                    <NavLink to="/audit-log" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Audit Log</NavLink>
+                  )}
+                </div>
+              )}
+            </div>
           </nav>
         )}
       </header>
@@ -88,20 +130,17 @@ export default function Layout({ children }) {
         <div className="app-footer-inner">
           <div className="app-footer-brand">© {new Date().getFullYear()} Ledgerly · Lagos, Nigeria</div>
           <nav className="app-footer-nav">
-            <Link to="/privacy">Privacy Policy</Link>
-            <Link to="/terms">Terms of Service</Link>
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/terms">Terms</Link>
             <Link to="/pricing">Pricing</Link>
-            {user && <Link to="/parent">Parent portal</Link>}
-            {user?.role === "owner" && <Link to="/security">Security</Link>}
+            {user && <Link to="/parent">Parent Portal</Link>}
           </nav>
         </div>
       </footer>
       {(showChangePw || forceChangePw) && (
         <ChangePasswordModal
           forced={forceChangePw}
-          onClose={() => {
-            if (!forceChangePw) setShowChangePw(false);
-          }}
+          onClose={() => { if (!forceChangePw) setShowChangePw(false); }}
           onSuccess={() => {
             setForceChangePw(false);
             setShowChangePw(false);
@@ -114,11 +153,6 @@ export default function Layout({ children }) {
 }
 
 /* --------------------- Notification bell --------------------- */
-//
-// Polls GET /notifications on mount. Shows a badge with unread count. Clicking
-// opens a dropdown with the most recent notifications + "Mark all as read".
-// Closes on outside-click via a window listener.
-
 function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -130,15 +164,12 @@ function NotificationBell() {
   const load = () => {
     api.get("/notifications")
       .then((d) => setNotifications(d.notifications || []))
-      .catch((e) => setError(e.message))
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -149,56 +180,42 @@ function NotificationBell() {
   }, [open]);
 
   const markAllRead = async () => {
-    setBusy(true); setError("");
+    setBusy(true);
     try {
       await api.post("/notifications/read-all", {});
       setNotifications([]);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch {} finally { setBusy(false); }
   };
 
   const markOne = async (id) => {
     try {
       await api.post(`/notifications/${id}/read`, {});
       setNotifications((n) => n.filter((x) => x.id !== id));
-    } catch (e) { setError(e.message); }
+    } catch {}
   };
 
   const fmtTime = (iso) => {
     if (!iso) return "";
-    try {
-      return new Date(iso).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" });
-    } catch { return iso; }
+    try { return new Date(iso).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" }); }
+    catch { return iso; }
   };
 
   const count = notifications.length;
 
   return (
     <div className="notif-bell" ref={ref}>
-      <button
-        type="button"
-        className="notif-bell-btn"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={`Notifications${count > 0 ? `, ${count} unread` : ""}`}
-      >
+      <button type="button" className="notif-bell-btn" onClick={() => setOpen((o) => !o)} aria-label={`Notifications${count > 0 ? `, ${count} unread` : ""}`}>
         <span className="notif-bell-icon">🔔</span>
         {count > 0 && <span className="notif-bell-badge">{count > 99 ? "99+" : count}</span>}
       </button>
-
       {open && (
         <div className="notif-dropdown">
           <div className="notif-dropdown-header">
             <strong>Notifications</strong>
-            {count > 0 && (
-              <button className="link-btn" disabled={busy} onClick={markAllRead}>
-                {busy ? "Marking..." : "Mark all as read"}
-              </button>
-            )}
+            {count > 0 && <button className="link-btn" disabled={busy} onClick={markAllRead}>{busy ? "..." : "Mark all read"}</button>}
           </div>
-          {error && <div className="form-error" style={{ margin: "8px 12px" }}>{error}</div>}
           {loading && <div className="page-loading" style={{ padding: "16px" }}>Loading…</div>}
-          {!loading && notifications.length === 0 && (
-            <div className="notif-empty">You're all caught up.</div>
-          )}
+          {!loading && notifications.length === 0 && <div className="notif-empty">You're all caught up.</div>}
           {!loading && notifications.length > 0 && (
             <div className="notif-list">
               {notifications.slice(0, 20).map((n) => (
@@ -209,10 +226,110 @@ function NotificationBell() {
                     {n.body && <div className="notif-item-text">{n.body}</div>}
                     <div className="notif-item-meta">
                       {fmtTime(n.created_at)}
-                      <button className="link-btn" style={{ marginLeft: 8 }} onClick={() => markOne(n.id)}>Mark read</button>
+                      <button className="link-btn" style={{ marginLeft: 8 }} onClick={() => markOne(n.id)}>Read</button>
                     </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------- Global search --------------------- */
+function GlobalSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef(null);
+  const debounceRef = useRef(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length < 2) { setResults(null); setLoading(false); return; }
+    setLoading(true);
+    debounceRef.current = setTimeout(() => {
+      api.get(`/search?q=${encodeURIComponent(q)}`)
+        .then((d) => { setResults(d); setLoading(false); })
+        .catch(() => { setResults({ students: [], payments: [], transactions: [], receipts: [] }); setLoading(false); });
+    }, 500);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const fmtShort = (iso) => {
+    if (!iso) return "";
+    try { return new Date(iso).toLocaleDateString("en-NG", { month: "short", day: "2-digit" }); }
+    catch { return iso; }
+  };
+
+  const pick = (path) => { setOpen(false); setQuery(""); setResults(null); navigate(path); };
+
+  const students = results?.students || [];
+  const payments = results?.payments || [];
+  const transactions = results?.transactions || [];
+  const total = students.length + payments.length + transactions.length;
+  const showDropdown = open && query.trim().length >= 2;
+
+  return (
+    <div className="global-search" ref={ref}>
+      <input
+        className="global-search-input"
+        type="search"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search…"
+        aria-label="Search"
+      />
+      {showDropdown && (
+        <div className="global-search-dropdown">
+          {loading && <div className="global-search-section">Searching…</div>}
+          {!loading && total === 0 && <div className="global-search-empty">No matches.</div>}
+          {!loading && students.length > 0 && (
+            <div className="global-search-group">
+              <div className="global-search-group-title">Students</div>
+              {students.map((s) => (
+                <button key={s.id} className="global-search-item" onClick={() => pick("/students")}>
+                  <div className="global-search-item-title">{s.name}</div>
+                  <div className="global-search-item-sub">{s.class || "—"}{s.admission_no ? ` · ${s.admission_no}` : ""}</div>
+                </button>
+              ))}
+            </div>
+          )}
+          {!loading && payments.length > 0 && (
+            <div className="global-search-group">
+              <div className="global-search-group-title">Payments</div>
+              {payments.map((p) => (
+                <button key={p.id} className="global-search-item" onClick={() => pick("/finance")}>
+                  <div className="global-search-item-title">{naira(p.amount)} · {fmtShort(p.paid_on)}</div>
+                  <div className="global-search-item-sub">{p.student_name || "—"}{p.fee_head_name ? ` · ${p.fee_head_name}` : ""}</div>
+                </button>
+              ))}
+            </div>
+          )}
+          {!loading && transactions.length > 0 && (
+            <div className="global-search-group">
+              <div className="global-search-group-title">Transactions</div>
+              {transactions.map((t) => (
+                <button key={t.id} className="global-search-item" onClick={() => pick("/finance")}>
+                  <div className="global-search-item-title">{t.category} · {t.type === "income" ? "+" : "-"}{naira(t.amount)}</div>
+                  <div className="global-search-item-sub">{fmtShort(t.occurred_on)}{t.description ? ` · ${t.description}` : ""}</div>
+                </button>
               ))}
             </div>
           )}

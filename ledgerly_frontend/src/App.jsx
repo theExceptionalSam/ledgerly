@@ -39,6 +39,12 @@ const ParentPortal = lazy(() => import("./pages/ParentPortal"));
 const Security = lazy(() => import("./pages/Security"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const BankReconciliation = lazy(() => import("./pages/BankReconciliation"));
+const FeeTemplates = lazy(() => import("./pages/FeeTemplates"));
+const PaymentPlans = lazy(() => import("./pages/PaymentPlans"));
+const Settings = lazy(() => import("./pages/Settings"));
+const DataRequests = lazy(() => import("./pages/DataRequests"));
+const Webhooks = lazy(() => import("./pages/Webhooks"));
 
 function PageLoader() {
   return <div className="page-loading">Loading…</div>;
@@ -114,6 +120,36 @@ export default function App() {
               <Route path="/onboarding" element={
                 <ProtectedRoute>
                   <Layout><Onboarding /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/bank-reconciliation" element={
+                <ProtectedRoute roles={["owner", "accountant"]}>
+                  <Layout><BankReconciliation /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/fee-templates" element={
+                <ProtectedRoute roles={["owner", "bursar"]}>
+                  <Layout><FeeTemplates /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/payment-plans" element={
+                <ProtectedRoute roles={["owner", "bursar"]}>
+                  <Layout><PaymentPlans /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><Settings /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/data-requests" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><DataRequests /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/webhooks" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><Webhooks /></Layout>
                 </ProtectedRoute>
               } />
               {/* Platform admin — separate auth (no ProtectedRoute) */}
