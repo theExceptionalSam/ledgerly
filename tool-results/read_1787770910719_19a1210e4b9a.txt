@@ -1,0 +1,594 @@
+     1→import { useEffect, useState } from "react";
+     2→import { api } from "../api/client";
+     3→import { naira, statusMeta } from "../utils/format";
+     4→import { useAuth } from "../context/AuthContext";
+     5→import { useTerm } from "../context/TermContext";
+     6→import TermSwitcher from "../components/TermSwitcher";
+     7→
+     8→const CLASS_LIST = [
+     9→  "Creche", "Nursery 1", "Nursery 2",
+    10→  "Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6",
+    11→  "JSS 1", "JSS 2", "JSS 3",
+    12→  "SS 1", "SS 2", "SS 3",
+    13→];
+    14→
+    15→export default function Students() {
+    16→  const { user } = useAuth();
+    17→  const { selectedTermId } = useTerm();
+    18→  const [students, setStudents] = useState([]);
+    19→  const [filter, setFilter] = useState("all");
+    20→  const [classFilter, setClassFilter] = useState("all");
+    21→  const [query, setQuery] = useState("");
+    22→  const [showAdd, setShowAdd] = useState(false);
+    23→  const [showUpload, setShowUpload] = useState(false);
+    24→  const [payFor, setPayFor] = useState(null);
+    25→  const [expanded, setExpanded] = useState(null);
+    26→  const [detail, setDetail] = useState(null);
+    27→  const [feeHeads, setFeeHeads] = useState([]);
+    28→  const [error, setError] = useState("");
+    29→  const [tab, setTab] = useState("fees");
+    30→  const [selected, setSelected] = useState(new Set());
+    31→
+    32→  const canEdit = ["owner", "bursar", "accountant"].includes(user.role);
+    33→  const canDelete = ["owner", "bursar"].includes(user.role);
+    34→  const isOwner = user.role === "owner";
+    35→
+    36→  // Unique class list from the loaded students (dynamic — reflects what's actually on record)
+    37→  const classes = [...new Set(students.map((s) => s.class))].sort();
+    38→
+    39→  const load = () => {
+    40→    if (!selectedTermId) return;
+    41→    api.get(`/students?termId=${selectedTermId}`).then((d) => setStudents(d.students)).catch((e) => setError(e.message));
+    42→  };
+    43→
+    44→  useEffect(() => { load(); }, [selectedTermId]);
+    45→
+    46→  useEffect(() => {
+    47→    api.get("/fee-heads").then((d) => setFeeHeads(d.feeHeads)).catch(() => {});
+    48→  }, []);
+    49→
+    50→  useEffect(() => {
+    51→    if (!expanded || !selectedTermId) { setDetail(null); return; }
+    52→    setTab("fees");
+    53→    api.get(`/students/${expanded}?termId=${selectedTermId}`).then(setDetail).catch((e) => setError(e.message));
+    54→  }, [expanded, selectedTermId]);
+    55→
+    56→  // Counts per status — computed from the full students list (before search
+    57→  // filtering) so the chips always show the true totals for this term.
+    58→  const counts = {
+    59→    all: students.length,
+    60→    paid: students.filter((s) => s.status === "paid").length,
+    61→    partial: students.filter((s) => s.status === "partial").length,
+    62→    outstanding: students.filter((s) => s.status === "outstanding").length,
+    63→  };
+    64→
+    65→  const filtered = students.filter((s) => {
+    66→    if (filter !== "all" && s.status !== filter) return false;
+    67→    if (classFilter !== "all" && s.class !== classFilter) return false;
+    68→    if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
+    69→    return true;
+    70→  });
+    71→
+    72→  const toggleSelect = (id) => {
+    73→    setSelected((prev) => {
+    74→      const next = new Set(prev);
+    75→      if (next.has(id)) next.delete(id); else next.add(id);
+    76→      return next;
+    77→    });
+    78→  };
+    79→
+    80→  const toggleSelectAll = () => {
+    81→    setSelected((prev) => {
+    82→      if (filtered.every((s) => prev.has(s.id))) return new Set();
+    83→      const next = new Set(prev);
+    84→      filtered.forEach((s) => next.add(s.id));
+    85→      return next;
+    86→    });
+    87→  };
+    88→
+    89→  const bulkArchive = async () => {
+    90→    const ids = [...selected];
+    91→    if (ids.length === 0) return;
+    92→    if (!confirm(`Remove ${ids.length} student${ids.length === 1 ? "" : "s"} from active records? Payment history is kept for audit purposes.`)) return;
+    93→    try {
+    94→      await api.post("/students/bulk/archive", { ids });
+    95→      setSelected(new Set());
+    96→      setExpanded(null);
+    97→      load();
+    98→    } catch (e) { setError(e.message); }
+    99→  };
+   100→
+   101→  const addStudent = async (fields) => {
+   102→    await api.post("/students", fields);
+   103→    setShowAdd(false);
+   104→    load();
+   105→  };
+   106→
+   107→  const recordPayments = async (studentId, lines, payment) => {
+   108→    for (const line of lines) {
+   109→      await api.post("/payments", {
+   110→        studentId, amount: line.amount, method: payment.method, note: payment.note,
+   111→        paidOn: payment.paidOn, feeHeadId: line.feeHeadId, termId: selectedTermId,
+   112→        idempotencyKey: `${studentId}-${Date.now()}-${line.feeHeadId}`,
+   113→      });
+   114→    }
+   115→    setPayFor(null);
+   116→    load();
+   117→    if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
+   118→    return lines.map((l) => ({ ...l }));
+   119→  };
+   120→
+   121→  const assignFee = async (studentId, feeHeadId, amount) => {
+   122→    await api.post(`/students/${studentId}/fees`, { feeHeadId, termId: selectedTermId, expectedAmount: amount });
+   123→    if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
+   124→  };
+   125→
+   126→  const applyDiscount = async (studentId, assignmentId, amount, reason) => {
+   127→    await api.post(`/students/${studentId}/fees/${assignmentId}/discount`, { discountAmount: amount, discountReason: reason });
+   128→    if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
+   129→  };
+   130→
+   131→  const archive = async (id, name) => {
+   132→    if (!confirm(`Remove ${name} from active records? Payment history is kept for audit purposes.`)) return;
+   133→    await api.del(`/students/${id}`);
+   134→    setExpanded(null);
+   135→    load();
+   136→  };
+   137→
+   138→  const openReceipt = (paymentId) => {
+   139→    api.openPdf(`/payments/${paymentId}/receipt`).catch((e) => alert(e.message));
+   140→  };
+   141→
+   142→  return (
+   143→    <div>
+   144→      <TermSwitcher />
+   145→      {!selectedTermId && <div className="empty-state">No term selected.</div>}
+   146→      {selectedTermId && (
+   147→        <>
+   148→          {error && <div className="form-error">{error}</div>}
+   149→          <div className="toolbar">
+   150→            <div className="toolbar-left">
+   151→              <input className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} />
+   152→              <select className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+   153→                <option value="all">All classes</option>
+   154→                {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+   155→              </select>
+   156→            </div>
+   157→            {canEdit && (
+   158→              <div style={{ display: "flex", gap: 8 }}>
+   159→                <button className="btn-primary" onClick={() => setShowUpload(true)}>Upload Excel</button>
+   160→                <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
+   161→              </div>
+   162→            )}
+   163→          </div>
+   164→
+   165→          {canDelete && selected.size > 0 && (
+   166→            <div className="bulk-bar">
+   167→              <span>{selected.size} selected</span>
+   168→              <button className="btn-danger-ghost" onClick={bulkArchive}>Remove selected</button>
+   169→              <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
+   170→            </div>
+   171→          )}
+   172→
+   173→          <div className="filter-row">
+   174→            {canDelete && filtered.length > 0 && (
+   175→              <label className="select-all-chip">
+   176→                <input type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
+   177→                Select all
+   178→              </label>
+   179→            )}
+   180→            {["all", "paid", "partial", "outstanding"].map((f) => (
+   181→              <button key={f} className={"filter-chip" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
+   182→                {f === "all" ? "All" : statusMeta[f].label}
+   183→                <span className="chip-count">{counts[f]}</span>
+   184→              </button>
+   185→            ))}
+   186→          </div>
+   187→
+   188→          {filtered.length === 0 && <div className="empty-state">No students match yet.</div>}
+   189→
+   190→          <div className="list">
+   191→            {filtered.map((s) => {
+   192→              const meta = statusMeta[s.status];
+   193→              const isOpen = expanded === s.id;
+   194→              return (
+   195→                <div key={s.id} className="list-item">
+   196→                  <div className="list-item-row">
+   197→                    {canDelete && (
+   198→                      <input
+   199→                        type="checkbox"
+   200→                        className="row-checkbox"
+   201→                        checked={selected.has(s.id)}
+   202→                        onClick={(e) => e.stopPropagation()}
+   203→                        onChange={() => toggleSelect(s.id)}
+   204→                      />
+   205→                    )}
+   206→                    <div className="list-item-main" onClick={() => setExpanded(isOpen ? null : s.id)}>
+   207→                      <div className="list-item-title">{s.name}</div>
+   208→                      <div className="list-item-sub">
+   209→                        {s.class}{s.admission_no ? " · " + s.admission_no : ""}
+   210→                        {s.guardian_contact ? " · Parent: " + s.guardian_contact : ""}
+   211→                      </div>
+   212→                    </div>
+   213→                    <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : s.id)}>
+   214→                      <span className="badge" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
+   215→                      <div className="list-item-amount">{naira(s.paid)} / {naira(s.expected)}</div>
+   216→                    </div>
+   217→                  </div>
+   218→
+   219→                  {isOpen && detail && (
+   220→                    <div className="list-item-detail">
+   221→                      <div className="detail-tabs">
+   222→                        <button className={"tab-btn" + (tab === "fees" ? " active" : "")} onClick={() => setTab("fees")}>Fees</button>
+   223→                        <button className={"tab-btn" + (tab === "payments" ? " active" : "")} onClick={() => setTab("payments")}>Payments</button>
+   224→                      </div>
+   225→
+   226→                      {tab === "fees" && (
+   227→                        <FeeTable
+   228→                          fees={detail.fees}
+   229→                          feeHeads={feeHeads}
+   230→                          isOwner={isOwner}
+   231→                          canEdit={canEdit}
+   232→                          onAssign={assignFee}
+   233→                          onDiscount={applyDiscount}
+   234→                          studentId={s.id}
+   235→                        />
+   236→                      )}
+   237→
+   238→                      {tab === "payments" && (
+   239→                        <div>
+   240→                          {detail.payments.length === 0 && <div className="empty-state" style={{ padding: "16px" }}>No payments recorded for this term.</div>}
+   241→                          {detail.payments.length > 0 && (
+   242→                            <div className="payment-history">
+   243→                              <div className="payment-history-title">Payment history</div>
+   244→                              {detail.payments.map((p) => (
+   245→                                <div key={p.id} className="payment-history-row">
+   246→                                  <span>{p.paid_on} · {p.fee_head_name || "General"}{p.note ? " · " + p.note : ""}</span>
+   247→                                  <span className="payment-history-right">
+   248→                                    {naira(p.amount)}
+   249→                                    <button className="link-btn" onClick={() => openReceipt(p.id)}>Receipt</button>
+   250→                                  </span>
+   251→                                </div>
+   252→                              ))}
+   253→                            </div>
+   254→                          )}
+   255→                        </div>
+   256→                      )}
+   257→
+   258→                      {canEdit && (
+   259→                        <div className="action-row">
+   260→                          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setPayFor(s.id)}>Record payment</button>
+   261→                          <button className="btn-danger-ghost" onClick={() => archive(s.id, s.name)}>Remove</button>
+   262→                        </div>
+   263→                      )}
+   264→                    </div>
+   265→                  )}
+   266→                </div>
+   267→              );
+   268→            })}
+   269→          </div>
+   270→        </>
+   271→      )}
+   272→
+   273→      {showAdd && <AddStudentModal onClose={() => setShowAdd(false)} onSave={addStudent} />}
+   274→      {showUpload && <UploadModal onClose={() => setShowUpload(false)} onDone={load} />}
+   275→      {payFor && (
+   276→        <PaymentModal
+   277→          student={students.find((s) => s.id === payFor)}
+   278→          fees={detail?.fees || []}
+   279→          onClose={() => setPayFor(null)}
+   280→          onSave={(lines, payment) => recordPayments(payFor, lines, payment)}
+   281→          onReceipt={openReceipt}
+   282→        />
+   283→      )}
+   284→    </div>
+   285→  );
+   286→}
+   287→
+   288→function FeeTable({ fees, feeHeads, isOwner, canEdit, onAssign, onDiscount, studentId }) {
+   289→  const [assigning, setAssigning] = useState(null);
+   290→  const [discountFor, setDiscountFor] = useState(null);
+   291→
+   292→  const assignedHeadIds = new Set(fees.map((f) => f.fee_head_id));
+   293→  const unassigned = feeHeads.filter((h) => !assignedHeadIds.has(h.id));
+   294→
+   295→  const totalExpected = fees.reduce((s, f) => s + f.expected_amount, 0);
+   296→  const totalDiscount = fees.reduce((s, f) => s + f.discount_amount, 0);
+   297→  const totalPaid = fees.reduce((s, f) => s + f.paid, 0);
+   298→  const totalOutstanding = fees.reduce((s, f) => s + f.outstanding, 0);
+   299→
+   300→  return (
+   301→    <div>
+   302→      {fees.length === 0 && <div className="empty-state" style={{ padding: "16px" }}>No fees assigned for this term yet.</div>}
+   303→      {fees.length > 0 && (
+   304→        <table className="fee-table">
+   305→          <thead>
+   306→            <tr><th>Fee Head</th><th className="num">Expected</th><th className="num">Discount</th><th className="num">Paid</th><th className="num">Outstanding</th>{isOwner && <th></th>}</tr>
+   307→          </thead>
+   308→          <tbody>
+   309→            {fees.map((f) => (
+   310→              <tr key={f.id}>
+   311→                <td>{f.fee_head_name}</td>
+   312→                <td className="num">{naira(f.expected_amount)}</td>
+   313→                <td className="num">{f.discount_amount > 0 ? <span style={{ color: "#C77D22" }}>{naira(f.discount_amount)}</span> : "—"}</td>
+   314→                <td className="num">{naira(f.paid)}</td>
+   315→                <td className="num" style={{ color: f.outstanding > 0 ? "#B3261E" : "#1B7A43", fontWeight: 700 }}>{naira(f.outstanding)}</td>
+   316→                {isOwner && <td>{canEdit && <button className="link-btn" onClick={() => setDiscountFor(f)}>Discount</button>}</td>}
+   317→              </tr>
+   318→            ))}
+   319→            <tr className="fee-table-total">
+   320→              <td>Total</td>
+   321→              <td className="num">{naira(totalExpected)}</td>
+   322→              <td className="num">{totalDiscount > 0 ? naira(totalDiscount) : "—"}</td>
+   323→              <td className="num">{naira(totalPaid)}</td>
+   324→              <td className="num">{naira(totalOutstanding)}</td>
+   325→              {isOwner && <td></td>}
+   326→            </tr>
+   327→          </tbody>
+   328→        </table>
+   329→      )}
+   330→
+   331→      {canEdit && unassigned.length > 0 && (
+   332→        <div className="assign-fee-row">
+   333→          <strong>Assign fee:</strong>
+   334→          {unassigned.map((h) => (
+   335→            <button key={h.id} className="filter-chip" onClick={() => setAssigning(h)}>{h.name}</button>
+   336→          ))}
+   337→        </div>
+   338→      )}
+   339→
+   340→      {assigning && (
+   341→        <QuickAmountModal
+   342→          title={`Assign ${assigning.name}`}
+   343→          onClose={() => setAssigning(null)}
+   344→          onSave={async (amount) => { await onAssign(studentId, assigning.id, amount); setAssigning(null); }}
+   345→        />
+   346→      )}
+   347→
+   348→      {discountFor && (
+   349→        <QuickDiscountModal
+   350→          feeHeadName={discountFor.fee_head_name}
+   351→          currentDiscount={discountFor.discount_amount}
+   352→          onClose={() => setDiscountFor(null)}
+   353→          onSave={async (amount, reason) => { await onDiscount(studentId, discountFor.id, amount, reason); setDiscountFor(null); }}
+   354→        />
+   355→      )}
+   356→    </div>
+   357→  );
+   358→}
+   359→
+   360→function QuickAmountModal({ title, onClose, onSave }) {
+   361→  const [amount, setAmount] = useState("");
+   362→  const [busy, setBusy] = useState(false);
+   363→  const submit = async () => { setBusy(true); try { await onSave(Number(amount) || 0); } finally { setBusy(false); } };
+   364→  return (
+   365→    <div className="modal-overlay" onClick={onClose}>
+   366→      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+   367→        <div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div>
+   368→        <label>Expected amount (₦)</label>
+   369→        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus />
+   370→        <button className="btn-primary btn-full" disabled={busy} onClick={submit}>{busy ? "Saving..." : "Assign"}</button>
+   371→      </div>
+   372→    </div>
+   373→  );
+   374→}
+   375→
+   376→function QuickDiscountModal({ feeHeadName, currentDiscount, onClose, onSave }) {
+   377→  const [amount, setAmount] = useState(String(currentDiscount || ""));
+   378→  const [reason, setReason] = useState("");
+   379→  const [busy, setBusy] = useState(false);
+   380→  const submit = async () => { setBusy(true); try { await onSave(Number(amount) || 0, reason); } finally { setBusy(false); } };
+   381→  return (
+   382→    <div className="modal-overlay" onClick={onClose}>
+   383→      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+   384→        <div className="modal-header"><div className="modal-title">Discount · {feeHeadName}</div><button className="modal-close" onClick={onClose}>✕</button></div>
+   385→        <label>Discount amount (₦)</label>
+   386→        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus />
+   387→        <label>Reason (optional)</label>
+   388→        <input value={reason} onChange={(e) => setReason(e.target.value)} />
+   389→        <button className="btn-primary btn-full" disabled={busy} onClick={submit}>{busy ? "Saving..." : "Apply discount"}</button>
+   390→      </div>
+   391→    </div>
+   392→  );
+   393→}
+   394→
+   395→function Modal({ title, onClose, children }) {
+   396→  return (
+   397→    <div className="modal-overlay" onClick={onClose}>
+   398→      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+   399→        <div className="modal-header">
+   400→          <div className="modal-title">{title}</div>
+   401→          <button className="modal-close" onClick={onClose}>✕</button>
+   402→        </div>
+   403→        {children}
+   404→      </div>
+   405→    </div>
+   406→  );
+   407→}
+   408→
+   409→function AddStudentModal({ onClose, onSave }) {
+   410→  const [name, setName] = useState("");
+   411→  const [klass, setKlass] = useState(CLASS_LIST[0]);
+   412→  const [admissionNo, setAdmissionNo] = useState("");
+   413→  const [guardianContact, setGuardianContact] = useState("");
+   414→  const [error, setError] = useState("");
+   415→  const [busy, setBusy] = useState(false);
+   416→
+   417→  const submit = async () => {
+   418→    setBusy(true); setError("");
+   419→    try {
+   420→      await onSave({ name, class: klass, admissionNo, guardianContact });
+   421→    } catch (e) { setError(e.message); } finally { setBusy(false); }
+   422→  };
+   423→
+   424→  return (
+   425→    <Modal title="Add student" onClose={onClose}>
+   426→      {error && <div className="form-error">{error}</div>}
+   427→      <div className="field-hint" style={{ marginTop: 0 }}>Fee heads are assigned after the student is created, from the student detail view.</div>
+   428→      <label>Full name</label>
+   429→      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Johnson" autoFocus />
+   430→      <label>Class</label>
+   431→      <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+   432→        {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+   433→      </select>
+   434→      <label>Admission number (optional)</label>
+   435→      <input value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} />
+   436→      <label>Parent contact</label>
+   437→      <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
+   438→      <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
+   439→        {busy ? "Saving..." : "Add student"}
+   440→      </button>
+   441→    </Modal>
+   442→  );
+   443→}
+   444→
+   445→function UploadModal({ onClose, onDone }) {
+   446→  const [file, setFile] = useState(null);
+   447→  const [result, setResult] = useState(null);
+   448→  const [error, setError] = useState("");
+   449→  const [busy, setBusy] = useState(false);
+   450→
+   451→  const submit = async () => {
+   452→    setBusy(true); setError("");
+   453→    try {
+   454→      const form = new FormData();
+   455→      form.append("file", file);
+   456→      const data = await api.upload("/students/bulk", form);
+   457→      setResult(data);
+   458→      onDone();
+   459→    } catch (e) { setError(e.message); } finally { setBusy(false); }
+   460→  };
+   461→
+   462→  return (
+   463→    <Modal title="Upload students from Excel" onClose={onClose}>
+   464→      {error && <div className="form-error">{error}</div>}
+   465→      {result ? (
+   466→        <div>
+   467→          <div className="finance-row"><span>Students imported</span><span style={{ color: "#1B7A43", fontWeight: 700 }}>{result.imported}</span></div>
+   468→          {result.failed.length > 0 && (
+   469→            <div className="payment-history">
+   470→              <div className="payment-history-title">Skipped rows</div>
+   471→              {result.failed.map((f, i) => (
+   472→                <div key={i} className="payment-history-row"><span>Row {f.row}</span><span style={{ color: "#B3261E" }}>{f.reason}</span></div>
+   473→              ))}
+   474→            </div>
+   475→          )}
+   476→          <button className="btn-primary btn-full" onClick={onClose}>Done</button>
+   477→        </div>
+   478→      ) : (
+   479→        <div>
+   480→          <p className="field-hint" style={{ marginTop: 0 }}>
+   481→            First row must have: <strong>Name, Class, Admission No, Parent Contact</strong>. Fee heads are assigned after import.
+   482→          </p>
+   483→          <a className="field-hint" href="#" onClick={(e) => { e.preventDefault(); api.download("/students/bulk/template", "ledgerly-students-template.xlsx"); }}>
+   484→            Download the template file
+   485→          </a>
+   486→          <label>Choose file (.xlsx, .xls or .csv)</label>
+   487→          <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+   488→          <button className="btn-primary btn-full" disabled={!file || busy} onClick={submit}>
+   489→            {busy ? "Uploading..." : "Upload and import"}
+   490→          </button>
+   491→        </div>
+   492→      )}
+   493→    </Modal>
+   494→  );
+   495→}
+   496→
+   497→function PaymentModal({ student, fees, onClose, onSave, onReceipt }) {
+   498→  const [lines, setLines] = useState(() => {
+   499→    // Default: one line for the fee head with the largest outstanding balance.
+   500→    const withOutstanding = fees.filter((f) => f.outstanding > 0);
+   501→    const defaultHead = withOutstanding.length > 0
+   502→      ? withOutstanding.reduce((a, b) => a.outstanding > b.outstanding ? a : b)
+   503→      : fees[0];
+   504→    return [{ feeHeadId: defaultHead?.fee_head_id || "", amount: "" }];
+   505→  });
+   506→  const [method, setMethod] = useState("cash");
+   507→  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+   508→  const [note, setNote] = useState("");
+   509→  const [error, setError] = useState("");
+   510→  const [busy, setBusy] = useState(false);
+   511→  const [savedPaymentIds, setSavedPaymentIds] = useState(null);
+   512→
+   513→  const updateLine = (i, field, val) => {
+   514→    const next = [...lines];
+   515→    next[i] = { ...next[i], [field]: val };
+   516→    setLines(next);
+   517→  };
+   518→
+   519→  const addLine = () => setLines([...lines, { feeHeadId: "", amount: "" }]);
+   520→  const removeLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
+   521→
+   522→  const submit = async () => {
+   523→    const valid = lines.filter((l) => l.feeHeadId && Number(l.amount) > 0);
+   524→    if (valid.length === 0) { setError("Add at least one payment line with a fee head and amount."); return; }
+   525→    setBusy(true); setError("");
+   526→    try {
+   527→      const ids = [];
+   528→      for (const line of valid) {
+   529→        const r = await api.post("/payments", {
+   530→          studentId: student.id, amount: Number(line.amount), method, note,
+   531→          paidOn: date, feeHeadId: line.feeHeadId, termId: undefined,
+   532→          idempotencyKey: `${student.id}-${Date.now()}-${line.feeHeadId}`,
+   533→        });
+   534→        ids.push(r.id);
+   535→      }
+   536→      setSavedPaymentIds(ids);
+   537→    } catch (e) { setError(e.message); } finally { setBusy(false); }
+   538→  };
+   539→
+   540→  if (savedPaymentIds) {
+   541→    return (
+   542→      <Modal title="Payment recorded" onClose={onClose}>
+   543→        <div className="field-hint" style={{ marginTop: 0 }}>Saved {savedPaymentIds.length} payment(s) for {student?.name}.</div>
+   544→        <div className="action-row">
+   545→          {savedPaymentIds.map((id) => (
+   546→            <button key={id} className="btn-primary" onClick={() => onReceipt(id)}>Print receipt</button>
+   547→          ))}
+   548→        </div>
+   549→        <button className="btn-primary btn-full" onClick={onClose}>Done</button>
+   550→      </Modal>
+   551→    );
+   552→  }
+   553→
+   554→  return (
+   555→    <Modal title={"Record payment · " + (student ? student.name : "")} onClose={onClose}>
+   556→      {error && <div className="form-error">{error}</div>}
+   557→      {student && <div className="field-hint">Outstanding: {naira(student.outstanding)}</div>}
+   558→      {lines.map((line, i) => (
+   559→        <div key={i} className="payment-line">
+   560→          <label>{i === 0 ? "Fee head" : ""}</label>
+   561→          <div className="payment-line-row">
+   562→            <select value={line.feeHeadId} onChange={(e) => updateLine(i, "feeHeadId", e.target.value)}>
+   563→              <option value="">Select fee head…</option>
+   564→              {fees.map((f) => (
+   565→                <option key={f.fee_head_id} value={f.fee_head_id}>
+   566→                  {f.fee_head_name} {f.outstanding > 0 ? `(out: ${naira(f.outstanding)})` : ""}
+   567→                </option>
+   568→              ))}
+   569→            </select>
+   570→            <input value={line.amount} onChange={(e) => updateLine(i, "amount", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount" inputMode="decimal" />
+   571→            {lines.length > 1 && <button className="tx-remove" onClick={() => removeLine(i)}>✕</button>}
+   572→          </div>
+   573→        </div>
+   574→      ))}
+   575→      <button className="link-btn" onClick={addLine}>+ Add another line</button>
+   576→      <label>Method</label>
+   577→      <select value={method} onChange={(e) => setMethod(e.target.value)}>
+   578→        <option value="cash">Cash</option>
+   579→        <option value="bank_transfer">Bank transfer</option>
+   580→        <option value="pos">POS</option>
+   581→        <option value="cheque">Cheque</option>
+   582→        <option value="online">Online</option>
+   583→      </select>
+   584→      <label>Date</label>
+   585→      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+   586→      <label>Note (optional)</label>
+   587→      <input value={note} onChange={(e) => setNote(e.target.value)} />
+   588→      <button className="btn-primary btn-full" disabled={busy} onClick={submit}>
+   589→        {busy ? "Saving..." : "Save payment"}
+   590→      </button>
+   591→    </Modal>
+   592→  );
+   593→}
+   594→
