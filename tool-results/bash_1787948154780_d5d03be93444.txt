@@ -1,0 +1,201 @@
+548 /home/z/my-project/worklog.md
+   - Added `useState` and `import ChangePasswordModal from "./ChangePasswordModal"`.
+   - Wrapped the existing `Log out` button and a new `Change password` button in a flex `<div style={{ display: "flex", gap: 10, alignItems: "center" }}>`. Both buttons use `.btn-ghost-dark` (the existing dark-header ghost style — matches the Log out button exactly so the new button doesn't visually break the header).
+   - Renders `{showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}` at the bottom of the shell, inside the `app-shell` div, so the modal overlays correctly.
+9. Build verification: `./node_modules/.bin/vite build 2>&1 | tail -6` → `✓ built in 1.35s`, no errors, no warnings. Output: `dist/index.html 0.94 kB`, `dist/assets/index-zl6JsSNI.css 13.68 kB`, `dist/assets/index-C_574oEa.js 232.07 kB`. CSS grew by the new `.btn-ghost` rule; JS grew by the new modal + describe() rewrite.
+
+Stage Summary:
+- 4 frontend files touched (1 new, 3 modified) + 1 CSS addition:
+  - `src/components/ChangePasswordModal.jsx` (NEW) — reusable modal: current/new/confirm-password fields, live 10+/uppercase/number validation mirroring AddUserModal, confirm-match hint, success banner + auto-close, error-surfacing for both validator details and server messages.
+  - `src/pages/Users.jsx` — added `deleteUser` handler + red `.btn-danger-ghost` Delete button per non-owner row; switched the enable/disable toggle to `.btn-ghost` (text correctly shows "Disable"/"Enable" based on `u.status`); added toolbar `Change password` button that opens `ChangePasswordModal`; `toggleStatus` left intact (already correct).
+  - `src/pages/AuditLog.jsx` — rewrote `describe()` as a switch with all 30 cases from the spec (incl. the 4 new ones: delete/user, delete/term, create/update/delete session, delete/student_bulk, delete/audit_log, create/student_bulk); trimmed the `details[]` array to avoid duplicating the title; added "Clear old entries" toolbar button that bulk-deletes entries older than 30 days via `POST /audit-logs/bulk-delete { before }` and reloads.
+  - `src/components/Layout.jsx` — added a `.btn-ghost-dark` `Change password` button next to `Log out` in the navy header; renders `ChangePasswordModal` conditionally.
+  - `src/styles.css` — added `.btn-ghost` class (light-bg ghost button) for the new Users buttons.
+- Build: `vite build` ✓ in 1.35 s, no errors or warnings.
+- Notes for next agent:
+  - The enable/disable toggle button was previously `.btn-danger-ghost` (red) even when the action was "Enable" — semantically misleading. Switched to `.btn-ghost` (neutral). If the design calls for a stronger color signal (green for Enable / red for Disable), the className can be made conditional on `u.status`.
+  - The Users page Change-password button opens the modal for the *currently-signed-in* user (the owner), not for the user in the row. This matches the backend route (`POST /users/change-password` is "change own password" — there's no admin-set-password endpoint). The per-user row only has role + status + delete controls, which is correct.
+  - `AuditLog.jsx`'s `describe()` fall-through is `${action} ${entity_type}` — if the backend adds a new (action, entity_type) pair without a frontend update, the title will be a raw verb+noun. Consider adding a backend-driven `metadata.summary` field if this becomes a maintenance burden.
+  - The "Clear old entries" button is owner-only by virtue of the audit-log route being owner-only (`audit.routes.js: router.use(requireAuth, requireRole('owner'))`) — no frontend gating needed.
+- Next actions: end-to-end smoke against a running backend — (a) owner invites a bursar, changes the bursar's role, disables then re-enables, then deletes them; confirm each action appears in the audit log with the correct new title. (b) Owner clicks "Change password" from the header (and from the Users toolbar), enters a wrong current password → confirm "Current password is incorrect" surfaces; enters a valid change → confirm success banner + audit row `${userName} changed their password`. (c) Click "Clear old entries" on a tenant with > 30-day-old logs → confirm the green notice shows the count and the list reloads without the deleted rows.
+
+---
+Task ID: frontend-reports
+Agent: general-purpose
+Task: Create 3 new frontend pages — Reports (financial reports, owner-only), BrandingSettings (receipt branding, owner-only), PlatformAdmin (platform operator dashboard, separate auth) — plus wire up routes in App.jsx and nav links in Layout.jsx.
+
+Work Log:
+1. Read worklog.md and explored `ledgerly_frontend/src/` — confirmed conventions: React 18 hooks, `api` client (`get/post/put/del/upload/download`), `useAuth()`/`useTerm()` context, CSS-class styling (no Tailwind), `naira()`/`statusMeta()`/`todayISO()` from `utils/format.js`. Reusable classes: `.stat-card`, `.stat-grid`, `.card`, `.fee-table` (already exists for tabular data), `.toolbar`, `.btn-primary`, `.btn-ghost`, `.btn-danger-ghost`, `.badge`, `.empty-state`, `.form-error`, `.auth-page`/`.auth-card`, `.app-shell`/`.app-header`/`.app-main`.
+2. Read backend controllers to confirm response shapes:
+   - `reports.controller.js` → `{ monthlyCollection: [{month,count,total}], defaulters: [{id,name,class,admission_no,guardian_contact,expected,paid,outstanding}], fullyPaid: [{id,name,class,admission_no,expected,paid}], summary: {total,collected,outstanding,studentCount} }`. Defaulters already sorted by outstanding DESC server-side.
+   - `branding.controller.js` → GET returns `{ branding: {name, logo_path, receipt_footer} }`; POST `/branding/logo` (multipart field `logo`, 2MB, image types only) returns `{ ok, logoPath }`; PUT `/branding/footer` body `{ footer }`.
+   - `platform.controller.js` → `/platform/overview` returns `{ summary: {totalSchools,activeSchools,totalStudents,totalPayments,totalCollected}, tenants: [{id,name,phone,created_at,user_count,student_count,payment_count,total_collected,last_active,health}] }` (health is `green`/`yellow`/`red`). `/platform/health` returns `{ database: {size, tables: [{name,size}]}, connections: {total,active}, pool: {max} }`. Auth: separate `platform_admins` table, token in `Authorization: Bearer <token>`.
+3. Created `pages/Reports.jsx`:
+   - `TermSwitcher` at top, calls `api.get("/reports?termId=" + selectedTermId)`.
+   - Section 1 — 4 summary cards reusing `.stat-card`/`.stat-grid` (Total expected, Total collected, Outstanding, Student count).
+   - Section 2 — Monthly Collection table (`fee-table` class) with month, payment count, and total amount plus an inline green bar-chart strip scaled to the max month.
+   - Section 3 — Defaulter list table (Name+badge, Class, Expected, Paid, Outstanding, action). Each row has a "Send reminder" button that calls `alert()` (placeholder for SMS/email integration). Backend already sorts by outstanding DESC. "Export CSV" button calls `api.download("/students/export?termId=...")`.
+   - Section 4 — Fully paid list table (Name+badge, Class, Expected, Paid).
+   - Uses `naira()` for all amounts, `statusMeta` for coloured badges (paid=green, outstanding=red).
+4. Created `pages/BrandingSettings.jsx`:
+   - `api.get("/branding")` to load current `{ name, logo_path, receipt_footer }`.
+   - Logo upload via `<input type="file">` → `api.upload("/branding/logo", formData)` (field name `logo`, 2MB client-side guard, accepts png/jpg/gif/webp).
+   - Receipt footer textarea (200 char max) → `api.put("/branding/footer", { footer })` on Save.
+   - Shows live logo preview (`logoUrl()` helper prepends API origin for dev cross-origin) and a full receipt preview card combining logo + school name + footer text.
+   - Success/error notices; busy states for both upload and footer save.
+5. Created `pages/PlatformAdmin.jsx`:
+   - NOT wrapped in `ProtectedRoute` (separate auth).
+   - Login form (email + access token). On submit, stores token in `localStorage["platform_admin_token"]`, sets `authed=true`, calls `loadDashboard()`.
+   - Uses raw `fetch` with `Authorization: Bearer <token>` (NOT the `api` client — keeps platform-token flow separate from tenant access-token/cookie flow). Helper `platformFetch(path, token)`.
+   - `Promise.all([/platform/overview, /platform/health])` for initial load + Refresh button.
+   - 401 response clears the stored token and reverts to the login form with a helpful error.
+   - Dashboard: 5 summary cards (Total schools, Active 7d, Total students, Total payments, Total collected) + 3 derived cards (avg per school, avg payments/school, total collected). Tenant list table with name, students, payments, total collected, last active (relative format), health (🟢/🟡/🔴 emoji + label). Platform health card with DB size (human-readable bytes), connections total/active, pool max, plus top-10 largest tables.
+   - Self-contained app shell (own `<header>` with Refresh + Log out buttons) so it doesn't reuse tenant `Layout.jsx`.
+6. Updated `App.jsx`:
+   - Added 3 lazy-loaded imports: `Reports`, `BrandingSettings`, `PlatformAdmin`.
+   - Routes: `/reports` (ProtectedRoute owner-only, wrapped in Layout), `/branding` (ProtectedRoute owner-only, wrapped in Layout), `/admin` (NO ProtectedRoute, renders `<PlatformAdmin />` directly).
+7. Updated `components/Layout.jsx`:
+   - Added owner-only nav links: "Reports" → `/reports`, "Branding" → `/branding`, placed before Users/Audit Log in the nav.
+8. Build check: `./node_modules/.bin/vite build` → `✓ built in 2.44s`. All three new pages produce separate chunks (Reports 5.24 kB, BrandingSettings 4.30 kB, PlatformAdmin 7.13 kB). No build errors.
+
+Next actions / notes for follow-up:
+- The Reports "Send reminder" button is a stub (`alert`). When the Termii messaging provider is wired up, replace the alert with an actual API call (e.g. `api.post("/students/:id/remind", { termId, channel: "sms" })` → backend uses `messagingProvider.send()`). `guardian_contact` is already returned by `/reports` for this purpose.
+- The Export CSV button reuses the existing `/students/export?termId=` endpoint (the same one the Students page uses). If a defaulter-only CSV is desired later, the backend reports route would need its own export endpoint.
+- PlatformAdmin login is purely token-based (no password endpoint exists in `platform.controller.js`). The email field is collected for display only. If a real login endpoint (`/platform/login`) is added later, the form should switch to email+password → receive token → store.
+- Logo URL construction in `BrandingSettings.jsx` strips `/api/v1` from `VITE_API_BASE` because logos are served from `/data/logos/...` (not under `/api/v1`). If the backend changes its static-mount path, update `logoUrl()` accordingly.
+
+Files created:
+- `ledgerly_frontend/src/pages/Reports.jsx`
+- `ledgerly_frontend/src/pages/BrandingSettings.jsx`
+- `ledgerly_frontend/src/pages/PlatformAdmin.jsx`
+
+Files modified:
+- `ledgerly_frontend/src/App.jsx` (3 lazy imports + 3 routes)
+- `ledgerly_frontend/src/components/Layout.jsx` (2 owner-only nav links)
+
+---
+Task ID: platform-backend
+Agent: general-purpose
+Task: Rewrite `platform.controller.js` + `platform.routes.js` to expose all Tier 1–3 platform admin endpoints (impersonation, suspend/unsuspend, revenue, errors, usage, feature flags, broadcasts, tenant notes, CSV export, DB stats, deployments, rate limits, NPS) on top of the existing overview/health endpoints. Migration 016 already created `feature_flags`, `tenant_notes`, `broadcast_messages`, `nps_feedback`, `deployment_logs`, `subscriptions`, `api_usage`, and added `tenants.status`.
+
+Work Log:
+1. Read `/home/z/my-project/worklog.md` for context — confirmed CommonJS, `db.query()` with `$N` placeholders, `asyncHandler` from `middleware/validate.js`, `signAccessToken(user)` from `utils/tokens.js` (lazy secret check via `checkSecrets()`), `recordAudit()` helper, `randomUUID()` from `crypto` for IDs. Confirmed migration 016 schema for all new tables (PK = TEXT, INTEGER booleans, `created_at TIMESTAMPTZ DEFAULT now()`). Confirmed `audit_logs` columns: `id, tenant_id, actor_user_id, action, entity_type, entity_id, ip_address, metadata, created_at`. Confirmed RLS is enabled on all tables but the Express service_role bypasses it (so cross-tenant queries work).
+2. Rewrote `src/controllers/platform.controller.js` — kept the existing 3 (`requirePlatformAdmin`, `getPlatformOverview`, `getPlatformHealth`) and added 18 handlers:
+   - **Tier 1**: `impersonateTenant` (finds owner user via `SELECT * FROM users WHERE tenant_id=$1 AND role='owner' LIMIT 1`, records an audit entry under the tenant with `metadata.impersonatedBy = req.platformAdmin.id`, signs a real JWT via `signAccessToken(owner)`, returns `{ accessToken, user }`); `suspendTenant` / `unsuspendTenant` (`UPDATE tenants SET status='suspended'|'active' RETURNING ...` + audit log); `getRevenue` (MRR = SUM(amount) WHERE status='active', ARPU = MRR/active_count rounded, churn = COUNT WHERE status='cancelled', planBreakdown = GROUP BY plan); `getErrors` (`SELECT ... FROM audit_logs WHERE action IN ('login_failed','delete') ORDER BY created_at DESC LIMIT 50` — no tenant filter); `getTenants` (dynamic WHERE builder for `?search=` on name ILIKE, `?plan=` joins subscriptions, `?health=` filters post-hoc since health is computed from last_active).
+   - **Tier 2**: `getUsage` (daily COUNT + COUNT(DISTINCT tenant_id) over `api_usage` for last 30 days, `date_trunc('day', created_at)`); `getFeatureFlags` (left join tenants for name); `upsertFeatureFlag` (`INSERT ... ON CONFLICT (tenant_id, feature) DO UPDATE SET enabled = EXCLUDED.enabled`); `getBroadcasts` (left join tenants); `createBroadcast` (validates `level` against the CHECK constraint list, defaults to 'info'); `deleteBroadcast` (soft delete: `SET active=0`); `getTenantNotes` (left join platform_admins for admin email); `createTenantNote` (created_by = `req.platformAdmin.id`); `exportTenants` (builds CSV manually with proper `"` escaping/doubling for embedded `,\n,"`, sets `Content-Type: text/csv` + `Content-Disposition: attachment; filename="tenants.csv"`).
+   - **Tier 3**: `getDatabaseStats` (expands getPlatformHealth — total DB size, per-table `pg_total_relation_size` + `pg_relation_size` + derived `index_size`, `pg_stat_user_tables.n_live_tup` for row counts, top-20 indexes by size, connection stats); `getDeployments` / `createDeployment` (deployed_by = `req.platformAdmin.id`); `getRateLimits` (per-tenant COUNT + AVG(response_time_ms) + MAX over `api_usage` last 24h); `getNps` (left join tenants + users, computes NPS score = ((promoters - detractors)/total)*100 rounded, avg score, breakdown); `createNps` (validates score is integer 0–10 per CHECK constraint).
+3. Rewrote `src/routes/platform.routes.js` — kept `router.use(ctrl.requirePlatformAdmin)` at the top so every route is auth-gated. Wired 24 routes total (2 existing + 22 new) all wrapped in `asyncHandler()`. Placed `/tenants/export` before `/tenants/:id/notes` for clarity (no actual conflict since they have different segment counts, but explicit ordering avoids future surprises). All handlers come from the controller module via `ctrl.X` — no inline handlers.
+4. Smoke test: `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="real" JWT_REFRESH_SECRET="real" node -e "require('./src/routes/platform.routes'); console.log('Platform routes OK')"` → prints `Platform routes OK`. (The async pg-pool ECONNREFUSED noise from the fake DB URL is expected and matches the grep filter in the task spec.)
+5. Syntax check: `node --check` on both files → `SYNTAX OK`.
+
+Next actions / notes for follow-up:
+- `GET /platform/tenants` currently uses a post-hoc JavaScript filter for `?health=` because health is computed from `last_active`, not stored. If the dashboard grows large enough that filtering at the DB level matters, add a generated `health` column on tenants (updated by a cron/trigger from `users.last_login_at`) and switch to SQL.
+- `GET /platform/errors` queries `audit_logs` for `login_failed` and `delete` actions across all tenants. This is a placeholder until a dedicated `error_logs` table is added (if ever) — the audit log doesn't capture runtime 500s or unhandled promise rejections. If true error tracking is needed, wire the `errorHandler` middleware in `validate.js` to also INSERT into an `error_logs` table, then point this endpoint at it.
+- `POST /platform/nps` is included for completeness but the task note says it would normally be called from the tenant app, not admin. When the tenant app gets a feedback widget, the route should be moved out from under `requirePlatformAdmin` (or duplicated under `/feedback/nps` with normal `requireAuth`) so end users can submit scores.
+- Impersonation issues only an access token (15 min TTL, no refresh token). The admin will be logged out when it expires. If a longer-lived impersonation session is needed, the controller would need to also issue a refresh token (see `issueSession()` in `auth.controller.js` for the pattern — note that path also sets a cookie).
+- `exportTenants` builds the CSV string in memory. For very large tenant counts (10k+), switch to a streaming response (`res.write` row-by-row with a cursor-based query) to avoid holding the whole CSV in memory.
+- Frontend `pages/PlatformAdmin.jsx` (from the prior task) currently calls only `/overview` and `/health`. The new endpoints can now be wired into the dashboard: revenue card → `/revenue`, tenant search box → `/tenants?search=`, suspend/unsuspend buttons → `/tenants/:id/suspend|unsuspend`, "Login as school" → `/impersonate/:tenantId` (store returned `accessToken` and redirect to the normal tenant UI), notes tab → `/tenants/:id/notes`, broadcasts panel → `/broadcasts`, etc.
+- No `feature_flags` read middleware exists yet — flags are stored and readable via the admin API but nothing in the request pipeline checks them. To make flags actually gate features, add a `requireFeature(feature)` middleware that looks up `(tenant_id, feature)` in `feature_flags` and 403s if disabled, and apply it to specific routes (e.g. gating `/reports` behind a `reports` flag).
+
+Files modified (only):
+- `ledgerly_backend/src/controllers/platform.controller.js` (rewrote — kept 3 existing handlers, added 18 new; total 24 exports)
+- `ledgerly_backend/src/routes/platform.routes.js` (rewrote — kept 2 existing routes, added 22 new; all under `requirePlatformAdmin` + `asyncHandler`)
+
+---
+Task ID: platform-frontend
+Agent: general-purpose
+Task: Rewrite `ledgerly_frontend/src/pages/PlatformAdmin.jsx` to be a comprehensive platform admin dashboard with all Tier 1-3 features. Keep the login flow (email + access token stored in localStorage as `platform_admin_token`). After login, replace the simple overview with a tabbed dashboard.
+
+Work Log:
+1. Read `/home/z/my-project/worklog.md` for context (prior `frontend-reports` task created the original simple PlatformAdmin page with login form + overview + health, 7.13 kB chunk). Confirmed conventions: React 18 hooks, CSS-class styling, `naira()` from `utils/format.js`, raw `fetch` (NOT `api` client) with `Authorization: Bearer <token>` for all `/platform/*` calls. Verified `App.jsx` already routes `/admin` directly to `<PlatformAdmin />` (no `ProtectedRoute`).
+2. Read backend `platform.routes.js` and `platform.controller.js` — confirmed only `/platform/overview` and `/platform/health` endpoints exist today. The remaining endpoints called by the new tabs (impersonate, tenants/export, errors, revenue, broadcasts, feature-flags, nps, usage, tenants/:id/suspend|unsuspend|notes) are NOT yet implemented on the backend — each tab degrades gracefully with an inline error + empty state when those 404.
+3. Rewrote `pages/PlatformAdmin.jsx` (7.13 kB → 30.63 kB / 7.99 kB gzip):
+   - Kept login form (email + access token, stored in `platform_admin_token` + `platform_admin_email`). Email is now persisted across page reloads via `EMAIL_KEY` so the header shows it after refresh.
+   - Kept `platformFetch(path, token, options)` helper, extended it to support `body` (auto-stringifies JSON), arbitrary HTTP methods, and `Content-Type` header detection. Added `platformDownload()` helper for CSV/PDF exports.
+   - Added a generic `usePlatformGet(token, path, deps)` hook used by every tab that needs its own endpoint — returns `{ data, loading, error, reload, setData }`. Tabs refetch on mount only (not on every parent re-render) and offer a manual Refresh button.
+   - Top-level state holds `overview`, `health`, `loading`, `error`, `activeTab`. Impersonation + suspend/unsuspend live on the parent so the Overview tab can trigger them and re-render the table.
+   - 8 tabs in a `.detail-tabs` bar (with horizontal scroll for narrow screens):
+     1. **Overview** — kept 4+4 summary cards, added search input + health filter dropdown + Export CSV button + per-tenant actions (Login as, Suspend/Unsuspend, Notes). Suspend/Notes use POST/PUT to `/platform/tenants/:id/suspend|unsuspend|notes`; errors surface inline. Notes editor opens in a modal-sheet.
+     2. **Revenue** — 4 stat cards (MRR, ARPU, Active subscriptions, Churned 30d), plan-breakdown bars (CSS divs coloured per plan), subscription table with plan badge.
+     3. **Errors & Activity** — recent-errors table with red rows for `delete`/`login_failed`/`suspend`/`revoke`/`expire` actions and amber for everything else. Handles both array and `{ errors: [...] }` response shapes.
+     4. **Usage** — daily API calls bar chart (30 bars, CSS divs, height scaled to max), daily-active-users card, rate-limit table.
+     5. **Broadcasts** — form (textarea 500-char max, level select info/warning/success, optional tenant select), active-broadcast list with badges, delete button (calls DELETE which sets inactive server-side).
+     6. **Feature Flags** — add-flag form (tenant select + feature name + enabled checkbox), table with click-to-toggle link button.
+     7. **Database** — DB size card, table-sizes table (raw bytes + formatted KB/MB), connection stats (total/active/idle/pool-max). Reuses top-level `health` data.
+     8. **NPS Feedback** — average-score card with promoter/passive/detractor colour, 4 stat cards, feedback table with score badge (green 9-10, amber 7-8, red 0-6).
+   - All tab content reuses existing CSS classes (`.stat-card`, `.stat-grid`, `.card`, `.fee-table`, `.list-item`, `.badge`, `.modal-overlay`, `.modal-sheet`, `.checkbox-row`, `.toolbar`, `.search-input`, `.link-btn`, `.btn-primary`, `.btn-ghost`, `.btn-danger-ghost`, `.form-error`, `.empty-state`, `.finance-row`, `.divider`). Admin-specific styles (bar charts, plan-breakdown bars) use inline styles per the spec — no new CSS file.
+4. **Impersonation flow** (critical): `impersonate(t)` calls `POST /platform/impersonate/:tenantId` with the platform token, expects `{ accessToken, user }` back, then opens the tenant app in a new tab with `/?impersonated=<accessToken>` as a URL param. Per the task spec, AuthContext is NOT modified — that change is intentionally out of scope here. Comment block above the function explains the limitation: for end-to-end seamless login, AuthContext's session-restore `useEffect` would need to check for `?impersonated=` and call `setAccessToken(token)` + `setUser(user)` instead of going through `/auth/refresh`. If the popup is blocked, shows a manual-copy fallback message with the URL.
+5. Build check: `./node_modules/.bin/vite build` → `✓ built in 2.01s`. PlatformAdmin chunk grew from 7.13 kB → 30.63 kB (gzip 7.99 kB). No build errors, no warnings.
+
+Next actions / notes for follow-up:
+- Backend endpoints still missing for this dashboard to be fully functional: `POST /platform/impersonate/:tenantId`, `GET /platform/tenants/export`, `GET /platform/revenue`, `GET /platform/errors`, `GET /platform/usage`, `GET|POST|DELETE /platform/broadcasts`, `GET|POST|PUT /platform/feature-flags`, `GET /platform/nps`, `POST /platform/tenants/:id/suspend|unsuspend`, `PUT /platform/tenants/:id/notes`. Each tab handles 404 / error responses gracefully so the dashboard won't break — but those tabs will just show error + empty state until the backend catches up. Recommend a follow-up `platform-backend` task to implement these against the response shapes this frontend expects (documented inline in each tab component).
+- For impersonation to be seamless end-to-end (i.e. actually log the platform admin into the tenant's app without a separate login), AuthContext needs a small change: in its init `useEffect`, check `new URLSearchParams(window.location.search).get('impersonated')` first; if present, call `setAccessToken(token)` then `api.get('/auth/me')` to hydrate the user. This was explicitly out of scope for this task per the spec — flagged for follow-up.
+- All tab data shapes are documented in the component file with `??` fallbacks for snake_case vs camelCase field names (e.g. `r.createdAt || r.created_at`) so the frontend tolerates either naming convention the backend settles on.
+
+Files modified:
+- `ledgerly_frontend/src/pages/PlatformAdmin.jsx` (full rewrite — 299 lines → ~860 lines)
+
+---
+Task ID: backend-waves
+Agent: general-purpose
+Task: Build all Wave 1-7 backend controllers (16 new controller+route pairs), update server.js mounting, deepen health check, add request timeout, tune DB pool, add parent/API-key/2FA auth helpers.
+
+Work Log:
+1. Read worklog + scanned repo structure: confirmed CommonJS, pg with `$N` placeholders, `db.query()`/`db.transaction()`, `asyncHandler`/`validate` from `middleware/validate`, `requireAuth`/`requireRole`/`requirePasswordNotForced` from `middleware/auth`, `recordAudit` from `utils/audit`, `signAccessToken` from `utils/tokens`. Confirmed migration 017 (`017_full_production.sql`) already created every table the new controllers reference: `online_payments`, `parents`, `parent_students`, `api_keys`, `bank_statements`, `bank_transactions`, `fee_templates`, `payment_plans`, `notifications`, `webhook_endpoints`, `webhook_deliveries`, `data_requests`, plus ALTERs for `users.twofa_*`, `terms.closed_*`, `refresh_tokens.user_agent/ip_address`, and tenant white-label columns.
+2. Existing `sessions.controller.js`/`sessions.routes.js` are academic-session controllers — to satisfy "Do NOT modify existing controllers" while still implementing task #6 (auth-session listing at `/auth/sessions`), named the new files `authSessions.controller.js` + `authSessions.routes.js` and mounted them at `/api/v1/auth` so the public path matches the spec (`/auth/sessions`).
+3. Installed `otplib@12` (v13's plugin-based API is incompatible with the simple `authenticator.generate/verify/keyuri` calls used by the controller; v12 matches the task's stated API).
+4. `utils/tokens.js`: added `signParentToken({ id, tenant_id })` and `verifyParentToken(token)` — parent tokens carry `{ sub, type: 'parent', tenantId, role: 'parent' }`; `verifyParentToken` rejects any token whose `type !== 'parent'` so a parent token can never be used on a staff endpoint and vice versa.
+5. `middleware/auth.js`: 
+   - `requireAuth` now rejects parent tokens (defence-in-depth so a leaked parent token can't reach staff handlers).
+   - Added `requireParent` — sets `req.parent` (not `req.user`) so parent handlers can't be reached by staff tokens by accident.
+   - Added `requireApiKey` — SHA-256-hashes the `x-api-key` header, looks up the hash in `api_keys`, sets `req.user = { tenantId, role: 'api', apiKeyId, permissions }`, and best-effort updates `last_used_at`.
+6. Built all 16 controllers + 16 routes:
+   - `payments_online`: initiate (creates `online_payments` row with `gen_random_uuid`-style reference, returns `{ reference, authorizationUrl }`), webhook (public, TODO Paystack verification — for now logs + on `charge.success` records a real payment via inlined INSERT matching `payments.controller.recordPayment`'s shape with `recorded_by=NULL`, flips `online_payments.status`, generates a sequential receipt number inline, notifies owners), list (tenant-scoped). Reused payment INSERT logic by inlining it — couldn't import the existing controller because the webhook has no `req.user` and `recordPayment` reads `req.user`.
+   - `subscriptions`: getCurrent, listPlans (hard-coded catalogue: free/starter/standard/premium/enterprise × monthly/yearly NGN pricing), subscribe (upserts the tenant's `subscriptions` row, sets `current_period_end`, Paystack initialization is TODO).
+   - `parents`: register (validates `student.guardian_contact === phone` before linking so a parent can't claim arbitrary students; upserts parent + links via `parent_students`), login (bcrypt compare → `signParentToken`), me (parent + linked students), studentFees (verifies parent-student link, returns current-term fee assignments), studentPayments (verifies link, returns payment history).
+   - `twofa`: setup (otplib `generateSecret` + `keyuri` for QR), verify (`authenticator.verify` → sets `twofa_enabled=1`), disable (re-verify then clear secret + flag).
+   - `apikeys`: list (masked), create (`ldk_<hex>_<hex>` raw key shown ONCE, SHA-256 hash stored), revoke (sets `revoked_at`).
+   - `authSessions`: list (`refresh_tokens WHERE revoked_at IS NULL AND expires_at > now()`), revoke (UPDATE `revoked_at`).
+   - `bankrecon`: upload (multer memoryStorage, inline RFC-4180 CSV parser, inserts `bank_statements` + one `bank_transactions` row per CSV row, auto-matches by exact amount + `±2 days` via `EXTRACT(EPOCH FROM (paid_on::date - bank_date::date)) <= 172800`), getStatement (joins payments for matched context), match (manual link + recomputes statement totals), unmatch (clears + recomputes).
+   - `termclosing`: close (`UPDATE terms SET closed_at, closed_by`, notifies all staff), reopen (owner-only via in-controller role check, route-level `requireRole('owner')` as backstop).
+   - `feetemplates`: list (parses JSON `items`), create (stores items as JSON string), apply (resolves targets via `studentIds[]` OR `class`, upserts `student_fee_assignments` for each student×item against the current term).
+   - `paymentplans`: list, create (seeds `student_fee_assignments` if missing so the plan shows up in expected totals), getPlan (joins + derives `paid_installments` from COUNT of payments against the (student, fee_head, term) triple).
+   - `notifications`: `createNotification(tenantId, userId, type, title, body, entityType, entityId)` exported as internal helper, list (unread only, LIMIT 100), markRead, markAllRead.
+   - `search`: parallel `Promise.all` of 4 tenant-scoped ILIKE queries (students/payments/transactions/receipts), each capped at 20 rows; payments query conditionally includes an exact-amount match when `q` parses as a number.
+   - `webhooks`: `deliverWebhook(tenantId, event, payload)` exported — fetches all active endpoints, filters by `events` array (supports `'*'`), POSTs JSON with `X-Ledgerly-Signature` (HMAC-SHA256 hex) + `X-Ledgerly-Event`, 10s `AbortSignal.timeout`, records `webhook_deliveries` row with status/response_code. CRUD endpoints: list (no secret returned), create (returns secret ONCE), delete.
+   - `cron`: `requireCronSecret` middleware checks `x-cron-secret` header against `CRON_SECRET` env; weeklySummary (per-owner weekly stats → `createNotification`, Resend TODO), checkSubscriptions (queries `subscriptions` with `current_period_end <= now+7d`, warns owner), cleanupTokens (deletes expired + revoked `refresh_tokens`).
+   - `datarequests`: export (records request, marks `completed`, notifies owner — actual CSV generation is TODO worker), deletion (owner-only, 30-day grace, blocks duplicate pending requests), list.
+   - `settings`: get (returns currency/language/custom_domain/primary_color/parent_company), update (owner-only via in-controller role check, COALESCE-only-update so partial PUTs work).
+7. `server.js` rewritten:
+   - Added 15-second `res.setTimeout` middleware before routes → 503 on timeout if headers not yet sent.
+   - Deepened `/health` to `SELECT 1` against the pool → `{ status, db, uptime }` or 503 `{ status: 'degraded', db: false }`.
+   - Mounted new public-surface routers (parents, cron) BEFORE `requirePasswordNotForced` per spec; mounted `paymentsOnlineRoutes` AFTER (its webhook is per-route unauthenticated so it works regardless — `requirePasswordNotForced` is a no-op when `req.user` is unset).
+   - Co-mounted routers that extend existing paths: `paymentsOnlineRoutes` on `/api/v1/payments`, `termclosingRoutes` on `/api/v1/terms`, `twofaRoutes` + `authSessionsRoutes` on `/api/v1/auth`. Express applies each in registration order; route signatures don't collide.
+   - Mounted the rest at `/api/v1`: apikeys, bankrecon, feetemplates, paymentplans, notifications, search, webhooks, datarequests, settings. Plus `/api/v1/subscriptions` standalone.
+8. `db/index.js` pool config: `max: 20`, `connectionTimeoutMillis: 5000`, `idleTimeoutMillis: 30000` (kept `prepare: false` for PgBouncer compat). Existing stub for missing `DATABASE_URL` left intact so CI can `require()` without crashing.
+9. Verification (the task's exact command):
+   `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="real" JWT_REFRESH_SECRET="real" node -e "require('./src/server'); setTimeout(() => { console.log('Server loads OK'); process.exit(0); }, 200);"`
+   → prints `Server loads OK` and exits 0. (The expected `Database initialization failed` log line is from the fake DATABASE_URL — `db.ready` rejects, the server doesn't `listen`, but the module loads cleanly.)
+   Also confirmed via a separate `node -e` walk of `app._router.stack` that all 16 new route groups appear in the route table: `/online/initiate`, `/online/webhook`, `/online`, `/current`, `/subscribe`, `/plans`, `/register`, `/login`, `/me`, `/students/:id/fees`, `/students/:id/payments`, `/2fa/setup`, `/2fa/verify`, `/2fa/disable`, `/sessions`, `/sessions/:id` (DELETE), `/bank-reconciliation/upload`, `/bank-reconciliation/:statementId`, `/bank-reconciliation/:statementId/match`, `/bank-reconciliation/:statementId/unmatch`, `/:id/close`, `/:id/reopen`, `/fee-templates`, `/fee-templates/:id/apply`, `/payment-plans`, `/payment-plans/:id`, `/notifications`, `/:id/read`, `/read-all`, `/search`, `/webhooks`, `/webhooks/:id` (DELETE), `/cron/weekly-summary`, `/cron/check-subscriptions`, `/cron/cleanup-tokens`, `/data-requests/export`, `/data-requests/deletion`, `/data-requests`, `/settings` (GET + PUT).
+
+Findings:
+- `otplib@13` (latest) has a plugin-based API (`generate({ secret, crypto, base32 })`) that doesn't match the task's `otplib` usage; pinned `otplib@12` which exposes the simple `authenticator.generate(secret)` / `authenticator.verify({ token, secret })` / `authenticator.keyuri(...)` surface the controller relies on.
+- Existing `sessions.controller.js` is for academic sessions — could not overwrite it (spec forbids modifying existing controllers), so the auth-session controller is named `authSessions.controller.js`. Public path still matches spec (`/api/v1/auth/sessions`).
+- `payments.controller.recordPayment` reads `req.user.tenantId`/`req.user.id`, but the Paystack webhook has no authenticated user — couldn't reuse it directly, so the webhook inlines the same INSERT shape with `recorded_by=NULL` and a parallel inline receipt-number generator. The `idempotency_key` is set to the Paystack reference so a retried webhook is idempotent at the DB constraint level.
+- `auth.controller.issueSession` doesn't populate the new `refresh_tokens.user_agent`/`ip_address` columns — that's an existing controller we can't modify, so `listSessions` returns NULL for those columns on new sessions. The columns exist (migration 017) and the controller reads them; they just won't be populated until a future task wires them through `issueSession`.
+- Auto-match in `bankrecon.upload` runs in-process inside the insert transaction — fine for typical statements (hundreds of rows); for very large statements this should move to a background job (noted in a code comment).
+- `requireApiKey` is exported from `middleware/auth.js` but no route currently uses it (the task didn't specify mounting an API-key-authenticated route) — it's available for future programmatic-access endpoints.
+
+Code changes:
+- NEW (16 controllers + 16 routes): `payments_online`, `subscriptions`, `parents`, `twofa`, `apikeys`, `authSessions`, `bankrecon`, `termclosing`, `feetemplates`, `paymentplans`, `notifications`, `search`, `webhooks`, `cron`, `datarequests`, `settings`.
+- MODIFIED: `utils/tokens.js` (+`signParentToken`, +`verifyParentToken`), `middleware/auth.js` (+`requireParent`, +`requireApiKey`, `requireAuth` now rejects parent tokens), `server.js` (mounts, timeout middleware, deepened `/health`), `db/index.js` (pool `max:20`/`connectionTimeoutMillis:5000`/`idleTimeoutMillis:30000`).
+- DEPS: `otplib@12` added to `package.json`.
+- NOT modified (per task constraint): all existing controllers, all existing routes, all migrations.
+
+Next actions:
+- Wire Paystack `POST /transaction/initialize` into `payments_online.initiate` and HMAC-SHA512 signature verification into `webhook` (both marked TODO in code).
+- Wire Resend email into `cron.weeklySummary` (currently notification-only).
+- Populate `refresh_tokens.user_agent`/`ip_address` from `req.headers['user-agent']`/`req.ip` inside `auth.controller.issueSession` (requires modifying an existing controller — flagged for a follow-up task).
+- Build the CSV-export background worker for `data_requests` type='export' (currently auto-completes with no file).
+- Build the deletion-cron that processes `data_requests` type='deletion' past the 30-day grace period.
+- Front-end: parent portal screens (login, register-with-student-link, my-students, fees, payment history); 2FA setup QR scan; API-key management UI; bank-reconciliation UI; webhook management UI; settings UI.

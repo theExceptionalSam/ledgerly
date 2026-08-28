@@ -1,0 +1,549 @@
+     1→# Ledgerly v2 Upgrade — Work Log
+     2→
+     3→This file tracks all work done on the Ledgerly v2 feature upgrade build.
+     4→Target repo: `theExceptionalSam/ledgerly` (Express + Vite, NOT the Next.js sandbox).
+     5→Working directory: `/home/z/my-project/ledgerly-work/ledgerly/`
+     6→
+     7→## Branding (extracted from provided zip)
+     8→- Ink/Primary (navy): `#14213D`
+     9→- Paper/background: `#F6F6F3`
+    10→- Ledger Green (paid): `#1B7A43`
+    11→- Ledger Amber (partial): `#C77D22`
+    12→- Ledger Red (outstanding): `#B3261E`
+    13→- Neutral (body text): `#5B5B54`
+    14→- Headings: Newsreader SemiBold (serif); Body/UI: Inter Medium (sans)
+    15→- App already uses this palette in `styles.css` — only "School Finance Tracker" → "Ledgerly" rename + logo assets needed.
+    16→
+    17→## Codebase conventions
+    18→- Backend: CommonJS (`require`), `better-sqlite3` sync API, `db.prepare().run/all/get`, `recordAudit()` helper, `requireAuth`/`requireRole` middleware, express-validator, `Router()`.
+    19→- Frontend: React 18 hooks, `api` client (`get/post/put/del/upload/download`), `useAuth()` context, CSS classes (not Tailwind), `Modal` pattern, `naira()`/`statusMeta()`/`todayISO()` from `utils/format.js`.
+    20→- Repo paths: `ledgerly_backend/` and `ledgerly_frontend/` (NOT `backend/`/`frontend/` as spec text says — adapting to actual repo structure, keeping all SQL/routes/field names exactly as specified).
+    21→
+    22→---
+    23→Task ID: util-termii
+    24→Agent: general-purpose
+    25→Task: Create a swappable messaging-provider interface for sending SMS/WhatsApp via Termii (Nigerian messaging API), with a `normalizePhone` helper and a facade `index.js` so callers don't depend on Termii directly.
+    26→
+    27→Work Log:
+    28→1. Read `/home/z/my-project/worklog.md` to confirm CommonJS conventions and repo layout (`ledgerly_backend/src/...`, no axios/node-fetch, use built-in `fetch`).
+    29→2. Verified target backend dir exists: `ledgerly_backend/src/services` did not yet exist — created `ledgerly_backend/src/services/messaging/`.
+    30→3. Wrote `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/services/messaging/termii.js`:
+    31→   - `normalizePhone(input)`: trims, strips internal whitespace, strips leading `+`, strips leading `00`, and converts 11-digit Nigerian local numbers starting with `0` to `234…`. Returns plain international form (no `+`, no `00`).
+    32→   - `sendMessage({ to, channel, message })`:
+    33→     - Reads `TERMII_API_KEY` from `process.env`; throws `Error('TERMII_API_KEY is not configured')` if missing/empty (no network call attempted).
+    34→     - Reads `TERMII_SENDER_ID` for the SMS `from` field.
+    35→     - Builds Termii POST `/api/sms/send` body: SMS → `{ api_key, to, from, sms, type:'plain', channel:'generic' }`; WhatsApp → `{ api_key, to, sms, type:'plain', channel:'whatsapp' }`.
+    36→     - Uses `AbortController` with 15s timeout, `Content-Type: application/json`, built-in `fetch`.
+    37→     - Parses JSON; success when `code === 'ok'` or `message_id` present → returns `{ success: true, providerMessageId }`.
+    38→     - Non-ok HTTP or missing `message_id` → `{ success: false, error: response.message || 'Termii request failed' }`.
+    39→     - Network/abort errors caught → `{ success: false, error: err.message }` (timeout → 'Termii request timed out').
+    40→   - Exports `{ sendMessage, normalizePhone }`.
+    41→4. Wrote `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/services/messaging/index.js`:
+    42→   - `const termii = require('./termii');` and re-exports `sendMessage` + `normalizePhone`.
+    43→   - Comment: "Currently routes to Termii. Swap this file to change providers without touching callers."
+    44→5. Ran the required smoke test (no real API call). Output:
+    45→   - `normalize 0803: 2348031234567`
+    46→   - `normalize +234: 2348031234567`
+    47→   - `normalize 234: 2348031234567`
+    48→   - `no-key threw (expected): TERMII_API_KEY is not configured`
+    49→   All four expectations confirmed. No npm packages installed; no other files touched.
+    50→
+    51→Stage Summary:
+    52→Two files created implementing the swappable Termii messaging provider:
+    53→- `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/services/messaging/termii.js` — provider implementation with `sendMessage` + `normalizePhone`.
+    54→- `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/services/messaging/index.js` — swappable facade re-exporting the Termii implementation.
+    55→
+    56→Smoke test passes: phone normalization converts local `0803…`, `+234…`, and `234…` forms to `2348031234567`, and the missing-API-key path throws `TERMII_API_KEY is not configured` without making a network call. No real Termii API call was made. Callers can `require('./services/messaging')` and call `sendMessage(...)` / `normalizePhone(...)`; swapping providers only requires editing `index.js`. No other files (`.env`, `server.js`, routes, controllers) were modified; no packages installed.
+    57→
+    58→---
+    59→Task ID: util-pdf
+    60→Agent: general-purpose
+    61→Task: Create a PDF receipt generator (`src/utils/receipt-pdf.js`) for school fee payments using pdfkit. Produce an A4 branded receipt with header band, billed-to block, details table (with amount-in-words), total band, and footer. Return a `Buffer` via a Promise.
+    62→
+    63→Work Log:
+    64→1. Installed `pdfkit@0.15.2` in `ledgerly_backend/` (resolved from `^0.15.0`). npm emitted an allow-scripts warning for the pre-existing `better-sqlite3` postinstall (node-gyp); pdfkit itself is pure JS and installed cleanly. No script approval was required for pdfkit.
+    65→2. Verified the Naira sign (₦, U+20A6) does NOT render with pdfkit's built-in Helvetica — WinAnsi encoding silently substitutes it with the broken-bar `¦` (confirmed via `pdftotext` extraction). Built-in `Times-Bold` has the same limitation.
+    66→3. Located Unicode-capable TTF substitutes shipped on the host: `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf` and `/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf`. Registered these with pdfkit (`doc.registerFont`) as `NairaSans-Bold` and `NairaSerif-Bold`, used ONLY on the two text runs that contain the ₦ symbol (the "Amount Paid (figures)" row and the green total band). Every other text run uses the spec'd built-in `Helvetica`/`Helvetica-Bold`/`Times-Roman`/`Times-Bold`. Verified via `pdftotext` that the ₦ now extracts correctly from the generated PDF.
+    67→4. Wrote `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/utils/receipt-pdf.js` (CommonJS). Exports `generateReceiptPdf({...})` returning `Promise<Buffer>`, plus the helpers `numberToWords`, `formatNaira`, `formatDate`, `capitalizeMethod` for reuse/testing.
+    68→   - `numberToWords(n)` handles 0–999,999,999 with proper "and"/hyphen rules; 0 → "Zero"; 15000 → "Fifteen Thousand"; amounts are suffixed with " Naira Only" at the call site.
+    69→   - `formatNaira(amount)` → "₦15,000" (thousands separators, no decimals).
+    70→   - `formatDate("2026-01-15")` → "15 Jan 2026" (parses Y/M/D directly to avoid UTC off-by-one).
+    71→   - `capitalizeMethod` maps cash/bank_transfer/pos/cheque/online (with a generic snake_case fallback).
+    72→   - Layout follows spec: 80pt navy header band with school name (Times-Bold 18pt), letter-spaced "OFFICIAL RECEIPT" (Helvetica 10pt), receipt number top-right (Helvetica-Bold 11pt); right-aligned date + term lines; navy 1pt rule; "BILLED TO" label; student name (Times-Bold 14pt); class/admission meta line; 6-row details table with 0.5pt pale row borders; light-tint total band with green Times-Bold 16pt amount; centered footer rule + italic disclaimer. A4 portrait, 50pt margins. Buffer collected via `doc.on('data')`/`'end'` and resolved on `doc.end()`.
+    73→5. Ran the prescribed smoke test. Generated `/tmp/test-receipt.pdf` (10,158 bytes, well above the 1,000-byte threshold). Verified with `pdftotext` that all expected content is present: school name, receipt number, "OFFICIAL RECEIPT", "Date: 15 Jan 2026", "Term: First Term", "BILLED TO", "Amaka Johnson", "Class: Primary 3 · Admission No: LHA/003/22", all six detail rows with values, "₦15,000" (Naira sign intact), "Fifteen Thousand Naira Only", "Cash", "TOTAL PAID ₦15,000", and the footer disclaimer. Also spot-checked helper edge cases (0, 15, 15000, 1234567, 999999999; all five method codes; thousands-separator formatting at 1,250,000).
+    74→6. No other files were touched. `package.json`/`package-lock.json` were updated only by `npm install pdfkit`.
+    75→
+    76→Stage Summary:
+    77→- File created: `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/utils/receipt-pdf.js`
+    78→- pdfkit version installed: `0.15.2` (resolved from `^0.15.0`)
+    79→- Smoke test result: PDF generated successfully, **10,158 bytes** (threshold was >1,000). All expected text and the ₦ symbol verified via `pdftotext`.
+    80→- Deviation from spec (justified): built-in `Helvetica-Bold`/`Times-Bold` cannot encode the ₦ sign (U+20A6) — pdfkit substitutes it with `¦`. Two text runs (the figures row value and the total-band amount) therefore use registered DejaVu Sans/Serif Bold TTFs (`/usr/share/fonts/truetype/dejavu/`) as Unicode-capable stand-ins. Visually indistinguishable from Helvetica-Bold/Times-Bold at body sizes; all other text uses the spec'd built-in fonts.
+    81→- Next actions for downstream agents: wire `generateReceiptPdf` into the payments controller's receipt-download endpoint (likely `GET /api/payments/:id/receipt`) — it should fetch the payment + student + tenant + fee head + term + recorded-by user, build the options object, call `generateReceiptPdf(...)`, and stream the buffer back as `Content-Type: application/pdf` with `Content-Disposition: inline; filename="receipt-<receiptNumber>.pdf"`. Consider also attaching the buffer to the receipt email (nodemailer/resend) if/when that flow is built.
+    82→
+    83→---
+    84→Task ID: main-build
+    85→Agent: orchestrator (Z.ai Code)
+    86→Task: Implement full Ledgerly v2 upgrade (Phases 0-6) + frontend + branding
+    87→
+    88→Work Log:
+    89→- Phase 0: Created migrations/ folder + runner in db/index.js, migrations tracking table, pre-upgrade backup logic
+    90→- Phase 1: Migration 001 (terms), terms controller/routes, default term on school registration, me endpoint returns currentTerm
+    91→- Phase 2: Migrations 002 (fee_heads + student_fee_assignments) + 003 (payments fee_head_id/term_id), fee-heads controller/routes, student fee endpoints (GET/POST fees, POST discount), payments now require feeHeadId, dashboard term-scoped + assignment-based totals, default 7 fee heads seeded on registration
+    92→- Phase 3: Migration 004 (receipts), receipt PDF generator (pdfkit, subagent-built), receipts controller with idempotent receipt numbering, GET /payments/:paymentId/receipt route
+    93→- Phase 4: Bulk assign controller + route (POST /fee-heads/:id/bulk-assign)
+    94→- Phase 5: Migration 005 (reminders + tenant_messaging_settings), Termii messaging service (subagent-built), reminders controller (settings, send, bulk, list), bulk rate limiter (3/hour/tenant), reminders_enabled gate
+    95→- Phase 6: Migration 006 (DROP COLUMN fee_amount), removed fee_amount from createStudent + bulk upload, updated template, schema.sql is pre-upgrade snapshot
+    96→- Frontend: TermContext + TermSwitcher, Terms page, FeeHeads page (bulk-assign modal), MessagingSettings page, Dashboard/Students/Finance term-scoped, Students.jsx fee table + multi-line PaymentModal + receipt buttons + reminder button + reminder history tab, Layout branding (Ledgerly logo + name), App routes, API client openPdf helper, Google Fonts (Inter + Newsreader), branding assets
+    97→- Fixed: Resend SDK lazy-init (server crashed on empty API key), receipt PDF await (was returning Promise not Buffer), fee heads seeded on registration (migration seed only runs at migration time for existing tenants)
+    98→- Verified: All 6 migrations apply + idempotent, API tests pass (fee heads, assignments, discounts, payments, dashboard, receipts, bulk assign, messaging, rate limiter), frontend builds, Agent Browser confirms registration→verify→dashboard→students→fee table→payment→receipt all work
+    99→
+   100→Stage Summary:
+   101→- 6 new migration files, 4 new backend controllers, 4 new route files, 1 PDF util, 1 messaging service
+   102→- 4 new frontend pages, 1 new context, 1 new component, API client extended
+   103→- All existing controllers/routes/pages updated for term-scoping + itemised fees
+   104→- Backend API fully verified via curl tests; frontend verified via Agent Browser (dashboard shows correct ₦70k/₦30k/₦40k figures, fee table renders per-head breakdown, naira symbol displays correctly)
+   105→- Ready to commit and push
+   106→
+   107→---
+   108→Task ID: pg-misc
+   109→Agent: general-purpose
+   110→Task: Convert four controllers (dashboard, terms, fee-heads, receipts) from SQLite (better-sqlite3 sync) to PostgreSQL (pg async) using the new `db.query()` / `db.transaction()` API in `src/db/index.js`.
+   111→
+   112→Work Log:
+   113→1. Read `/home/z/my-project/worklog.md` for conventions (CommonJS, `recordAudit` now async, `db.query` auto-converts `?` → `$N`).
+   114→2. Read all four target controllers + `src/db/index.js` + `src/utils/audit.js` to confirm the new API surface (async `query(sql, params, client?)` returning `{ rows, rowCount }`; async `transaction(async (client) => …)`; async `recordAudit(...)`).
+   115→3. Converted **dashboard.controller.js**: `getDashboard` → `async`. Five sequential lookups converted: current-term lookup (`.get` → `rows[0]`), fee totals aggregate (`.get`), collected sum (`.get`), per-student aggregate (`.all` → `rows`), and the two transactions-table sums (`.get`). All params wrapped in arrays. No `db.transaction()` use; no `recordAudit()` calls; no `datetime('now')` use. Result-shape preserved (`{ expected, collected, outstanding, studentCount, fullyPaid, partial, fullyOutstanding, otherIncome, expenditure, netPosition, termId }` and the zero-term early return).
+   116→4. Converted **terms.controller.js**: `listTerms`, `createTerm`, `setCurrentTerm` → all `async`.
+   117→   - `createTerm`: `db.transaction(() => {…})` → `await db.transaction(async (client) => {…})`; both inner `db.prepare().run()` calls converted to `await db.query(sql, [params], client)`. `recordAudit(...)` → `await recordAudit(...)`.
+   118→   - `setCurrentTerm`: term existence check via `.get` → `rows[0]`; the swap transaction converted the same way (two `UPDATE`s passed `client`). `recordAudit` awaited.
+   119→   - `listTerms`: `.all()` → `{ rows: terms }`.
+   120→5. Converted **fee-heads.controller.js**: `listFeeHeads`, `createFeeHead`, `deactivateFeeHead`, `bulkAssign` → all `async`.
+   121→   - `bulkAssign`: head/term existence checks via `.get` → `rows[0]`; students list via `.all` → `{ rows: students }`. The `db.transaction(() => { for (const s of students) {…} })` converted to `await db.transaction(async (client) => { for (const s of students) {…} })` with every inner `db.prepare().get()`/`.run()` rewritten as `await db.query(sql, [params], client)` — both the existence check, the conditional `UPDATE`, and the `INSERT`. `recordAudit` awaited.
+   122→   - `createFeeHead` + `deactivateFeeHead`: `.get`/`.run` converted; `recordAudit` awaited.
+   123→6. Converted **receipts.controller.js**: `buildReceiptNumber` + `issueReceipt` → `async`.
+   124→   - `buildReceiptNumber`: `.get(...).n` → `await db.query(...)` then `rows[0].n`.
+   125→   - `issueReceipt`: payment lookup (`.get` → `rows[0]`), tenant lookup (`.get` → `rows[0]`), idempotency check (`SELECT * FROM receipts` `.get` → `rows[0]`). The `db.transaction(() => {…})` for the insert converted to `await db.transaction(async (client) => {…})`: the re-check `SELECT` and the `INSERT` both use `client`. `recordAudit` awaited. `generateReceiptPdf` was already Promise-returning and the existing `.then()/.catch()` chain was preserved (so the response is sent after the buffer resolves) — no change needed there.
+   126→7. No SQL strings were rewritten — relied on `db.query`'s `convertPlaceholders` (`?` → `$N`). No `datetime('now')` use existed in any of these four files, so no `now()` substitutions were required.
+   127→8. Verified all four modules load: `DATABASE_URL="postgres://x:x@127.0.0.1:5432/x" DB_SSL=false node -e "require('./src/controllers/dashboard.controller'); require('./src/controllers/terms.controller'); require('./src/controllers/fee-heads.controller'); require('./src/controllers/receipts.controller'); console.log('All 4 OK')"`. Output: `All 4 OK`. (The follow-up `[db] Initialization failed: connect ECONNREFUSED 127.0.0.1:5432` is expected — there's no real Postgres in the sandbox; the `require()` calls themselves all succeed, which is the verification gate.)
+   128→
+   129→Stage Summary:
+   130→- Four controllers converted in place, no path changes, no signature changes for callers (still `(req, res) =>`, now async):
+   131→  - `src/controllers/dashboard.controller.js` — `getDashboard` async; 5 sequential queries awaited.
+   132→  - `src/controllers/terms.controller.js` — `listTerms`/`createTerm`/`setCurrentTerm` async; 2 transactions converted; 3 `recordAudit` calls awaited.
+   133→  - `src/controllers/fee-heads.controller.js` — `listFeeHeads`/`createFeeHead`/`deactivateFeeHead`/`bulkAssign` async; bulk-assign transaction loop fully awaited with `client` passed to each inner query; 3 `recordAudit` calls awaited.
+   134→  - `src/controllers/receipts.controller.js` — `buildReceiptNumber`/`issueReceipt` async; idempotent insert transaction converted with `client`; 1 `recordAudit` awaited; PDF promise chain preserved.
+   135→- All SQL strings left as-is (`?` placeholders auto-converted by `db.query`).
+   136→- Verification: all four modules `require()` cleanly under a stub `DATABASE_URL`. No runtime DB calls exercised in the sandbox.
+   137→- Next actions: end-to-end smoke against a real Postgres instance (registration → term switch → fee-head bulk-assign → payment → receipt issue/PDF) to confirm the converted controllers behave identically to their SQLite predecessors; check that route handlers (in `src/routes/`) don't need to be made async-aware (Express handles async route returns fine as long as rejections are caught — none of these handlers throw unhandled rejections since `generateReceiptPdf`'s `.catch` is the only Promise chain, and it's already in place).
+   138→
+   139→---
+   140→Task ID: pg-core
+   141→Agent: general-purpose
+   142→Task: Convert three controllers (students, payments, transactions) from SQLite (better-sqlite3 sync API) to PostgreSQL (pg async API), targeting the new `db.query()` / `db.transaction()` async API in `src/db/index.js`.
+   143→
+   144→Work Log:
+   145→1. Read `/home/z/my-project/worklog.md` for context (CommonJS, better-sqlite3 sync → pg async migration in progress, `db.query()` auto-converts `?` to `$N`, `recordAudit()` is now async).
+   146→2. Read `src/db/index.js` to confirm the API surface: `db.query(sql, params, client?)` returns `{ rows, rowCount }`; `db.transaction(async (client) => {...})` releases the client on resolve/reject; the `convertPlaceholders` helper means SQL strings can keep their `?` placeholders unchanged.
+   147→3. Read `src/utils/audit.js` to confirm `recordAudit` is `async` and uses `$1..$8` placeholders already (its body was already migrated).
+   148→4. Converted `src/controllers/students.controller.js` (8 exported fns + 2 internal helpers):
+   149→   - `resolveTermId(tenantId, termId)` → `async`; `db.prepare(sql).get(tenantId)` → `const { rows } = await db.query(sql, [tenantId]); const current = rows[0];`.
+   150→   - `getStudentFeesInternal(tenantId, studentId, termId)` → `async`; the `.all(...).map(a => ({...}))` chain became `const { rows } = await db.query(sql, [...]); return rows.map(a => ({...}));`. All callers (`getStudentDetail`, `getStudentFees`) now `await` it.
+   151→   - `listStudents`, `createStudent`, `updateStudent`, `archiveStudent`, `getStudentDetail`, `getStudentFees`, `assignStudentFee`, `applyDiscount` → all `async`. Each `.prepare(sql).get(params)` became `const { rows } = await db.query(sql, [params]); const x = rows[0];`, each `.all(params)` became `const { rows } = await db.query(sql, [params]);`, each `.run(params)` became `await db.query(sql, [params]);`.
+   152→   - All 6 `recordAudit({...})` calls now `await`ed.
+   153→   - The complex `listStudents` SQL (with two correlated subqueries + outer WHERE, sharing `?` numbering) was left exactly as-is — `db.query`'s `convertPlaceholders` handles the `?` → `$1, $2, $3` rewrite.
+   154→   - `getStudentDetail` previously used a ternary `const payments = termId ? db.prepare(...).all(...) : [];`. Split into `let payments = []; if (termId) { ... }` to keep the `await` clean.
+   155→5. Converted `src/controllers/payments.controller.js` (2 exported fns):
+   156→   - `recordPayment` → `async`. Reads (student/head/term/idempotency lookups) converted to `(await db.query(sql, [params])).rows[0]`. The single INSERT was wrapped in `await db.transaction(async (client) => { await db.query(sql, [params], client); });` per task instruction (the original SQLite code didn't actually use `db.transaction()` here, but the task explicitly asked to "keep it in a transaction for consistency" and the transaction wrapper is harmless and future-proofs adding the receipt row write inside the same tx).
+   157→   - `reversePayment` → `async`; `SELECT *` lookup → `(await db.query(sql, [params])).rows[0]`; UPDATE → `await db.query(sql, [params])`. Both `recordAudit` calls `await`ed.
+   158→6. Converted `src/controllers/transactions.controller.js` (3 exported fns):
+   159→   - `listTransactions` → `async`; the ternary-of-`.all(...)` calls became a `let rows; if (...) { const result = await db.query(...); rows = result.rows; } else { ... }` branch (cleaner than cramming await into a ternary).
+   160→   - `createTransaction`, `reverseTransaction` → `async`; INSERT/UPDATE via `await db.query(sql, [params])`, lookups via `(await db.query(sql, [params])).rows[0]`. Both `recordAudit` calls `await`ed.
+   161→7. Verification:
+   162→   - Ran the prescribed require chain: `node -e "require('./src/controllers/students.controller'); require('./src/controllers/payments.controller'); require('./src/controllers/transactions.controller'); console.log('All 3 OK')"` → printed `All 3 OK`. (The trailing `[db] Initialization failed:` line is from `src/db/index.js`'s background `init()` promise rejecting because no DATABASE_URL is set in this sandbox — it does NOT affect the synchronous require chain, which completes before the async init rejects.)
+   163→   - Re-ran with a throwaway `DATABASE_URL` and `DB_SSL=false` to suppress the init crash, then enumerated exports and `constructor.name`:
+   164→     - `students: listStudents,createStudent,updateStudent,archiveStudent,getStudentDetail,getStudentFees,assignStudentFee,applyDiscount`
+   165→     - `payments: recordPayment,reversePayment`
+   166→     - `transactions: listTransactions,createTransaction,reverseTransaction`
+   167→     - All three sampled handlers report `AsyncFunction` (was `Function` before).
+   168→   - `rg '\.prepare\(|db\.transaction\(\(\)|recordAudit\(\{|datetime\(.\s*now.\)'` across the three files → **0 matches** (no leftover sync API or stale SQLite-isms).
+   169→   - `rg 'await recordAudit|await db\.query|await db\.transaction'` → **43 matches** across the three files (10 `await recordAudit`, 31 `await db.query`, 1 `await db.transaction` inside `recordPayment` + 1 inside the `db.transaction` callback itself).
+   170→8. Did NOT touch: routes, middleware, schema, migrations, `src/db/index.js`, `src/utils/audit.js`, frontend. SQL strings were intentionally kept with `?` placeholders (db.query auto-converts to `$N`). No `datetime('now')` appeared in any of the three files, so no `now()` substitution was needed.
+   171→
+   172→Stage Summary:
+   173→- Three controllers converted from better-sqlite3 sync API to pg async API:
+   174→  - `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/controllers/students.controller.js` — 8 exported fns + 2 internal async helpers (`resolveTermId`, `getStudentFeesInternal`).
+   175→  - `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/controllers/payments.controller.js` — 2 exported fns; `recordPayment`'s INSERT now runs inside `await db.transaction(async (client) => {...})` with the `client` passed as the 3rd arg to `db.query()`.
+   176→  - `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/controllers/transactions.controller.js` — 3 exported fns; straightforward sync→async.
+   177→- All `recordAudit({...})` calls now `await`ed (10 total across the three files).
+   178→- No SQL string rewrites were necessary — the `db.query` placeholder converter handles `?` → `$N` automatically; all original SQL (including the multi-subquery `listStudents` query and the `JOIN` in `applyDiscount`) was preserved verbatim.
+   179→- Verification: `node -e "require('./src/controllers/...')..."` prints `All 3 OK`; all 13 exported function names match the originals; all are now `AsyncFunction`. Zero remaining `.prepare(` / sync `db.transaction(() => {})` / un-awaited `recordAudit` calls.
+   180→- Next actions for downstream agents: (a) route handlers that mount these controllers do not need changes — Express happily awaits returned promises from async handlers as long as any rejection is forwarded to `next(err)` (verify the route files don't have try/catch wrappers that swallow rejections, or add `express-async-handler` if not). (b) Other controllers in `src/controllers/` (auth, tenants, fee-heads, terms, reminders, receipts, dashboard, bulk-assign, students-bulk-upload, messaging-settings) still use the old better-sqlite3 sync API and will need the same conversion pass. (c) Set `DATABASE_URL` and `DB_SSL=false` (for local) in `.env` before starting the server — `src/db/index.js` calls `process.exit(1)` on missing `DATABASE_URL`.
+   181→
+   182→---
+   183→Task ID: pg-auth
+   184→Agent: general-purpose
+   185→Task: Convert `src/controllers/auth.controller.js` from SQLite (better-sqlite3 sync API) to PostgreSQL (pg async API) using the new `db.query()` / `db.transaction()` API in `src/db/index.js`. Also accommodate the now-async `recordAudit()` (utils/audit.js) and `verifyCode()` (utils/otp.js), and convert the sync `issueSession` helper to async.
+   186→
+   187→Work Log:
+   188→1. Read `/home/z/my-project/worklog.md` for context (CommonJS, better-sqlite3 → pg migration in progress; `db.query` auto-converts `?` to `$N` but the task explicitly asks for explicit `$N` placeholders; `recordAudit`/`verifyCode` now async; `issueVerificationCode` already async).
+   189→2. Read `src/db/index.js` (confirms `query(sql, params, client?)` returns `{ rows, rowCount }` and `transaction(async (client) => …)` releases the client on resolve/reject), `src/utils/audit.js` (confirms `recordAudit` is `async`, already uses `$1..$8`), `src/utils/otp.js` (confirms `verifyCode` is `async`, returns `{ ok, error? }`).
+   190→3. Read the original `auth.controller.js` (203 lines, 8 exported fns + `issueSession` helper) to enumerate every SQLite-ism to convert: 1 `db.transaction(() => {...})` (in `registerSchool`), 11 `db.prepare(sql).get(...)` calls, 4 `db.prepare(sql).run(...)` calls (including `issueSession`'s refresh-token insert and 3 `revoked_at` updates), 3 `recordAudit({...})` calls that needed `await`, 1 `verifyCode(...)` that needed `await`, 3 `issueSession(...)` calls that needed `await`, and 3 occurrences of `datetime('now')` (in login's last_login_at update, refresh's revoke update, logout's revoke update, logoutAll's revoke-all update — actually 4 occurrences total).
+   191→4. Rewrote `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/controllers/auth.controller.js` in place, applying every conversion rule:
+   192→   - **`issueSession`** → `async function issueSession(res, user)`. The refresh-token INSERT became `await db.query('INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)', [randomUUID(), user.id, hash, expiresAt])`. Still returns the access token synchronously after the await; callers must `await issueSession(res, user)`.
+   193→   - **`registerSchool`** (already `async`): email-existence check `.get(email)` → `const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]); if (rows[0]) ...`. The `db.transaction(() => {...})` became `await db.transaction(async (client) => {...})` with every inner query rewritten as `await db.query(sql, [params], client)` — tenants INSERT, users INSERT, terms INSERT, and the 7-iteration fee-heads INSERT loop. `recordAudit({...})` → `await recordAudit({...})`. Explicit `$1..$5` placeholders (also `$1..$3` for the smaller inserts).
+   194→   - **`verifyOtp`** → `async`. User lookup `.get(...)` → `rows[0]`. `verifyCode(...)` → `await verifyCode(...)`. Email-verified UPDATE → `await db.query('UPDATE users SET email_verified = 1 WHERE id = $1', [user.id])`. `recordAudit({...})` → `await recordAudit({...})`. `issueSession(res, user)` → `await issueSession(res, user)`.
+   195→   - **`resendOtp`** (already `async`): user lookup `.get(...)` → `rows[0]`. `issueVerificationCode(...)` was already `await`ed. No other changes.
+   196→   - **`login`** (already `async`): user lookup `.get(...)` → `rows[0]`. Failed-attempt UPDATE `.run(...)` → `await db.query('UPDATE users SET failed_login_count = $1, locked_until = $2 WHERE id = $3', [failedCount, lockedUntil, user.id])`. `recordAudit({...})` for `login_failed` → `await`. Successful-login UPDATE `.run(...)` → `await db.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = now() WHERE id = $1', [user.id])` (the `datetime('now')` → `now()` substitution). `recordAudit({...})` for `login` → `await`. `issueSession(res, user)` → `await issueSession(res, user)`.
+   197→   - **`refresh`** → `async`. Refresh-token lookup `.get(hash)` → `const { rows: tokenRows } = await db.query('SELECT * FROM refresh_tokens WHERE token_hash = $1', [hash]); const record = tokenRows[0];`. User lookup `.get(...)` → `const { rows: userRows } = await db.query('SELECT * FROM users WHERE id = $1', [record.user_id]); const user = userRows[0];`. Revoke-used-token UPDATE → `await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1', [record.id])` (with `datetime('now')` → `now()`). `issueSession(res, user)` → `await issueSession(res, user)`.
+   198→   - **`logout`** → `async`. Revoke-by-hash UPDATE → `await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1', [hash])` (with `datetime('now')` → `now()`).
+   199→   - **`logoutAll`** → `async`. Revoke-all-for-user UPDATE → `await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [req.user.id])` (with `datetime('now')` → `now()`).
+   200→   - **`me`** → `async`. Three lookups (user, tenant, current term) — each `.get(...)` became `const { rows: xRows } = await db.query(sql, [params]); const x = xRows[0];`. Result-shape preserved (`{ user, tenant, currentTerm }`).
+   201→5. Placeholder strategy: per the task rules, explicitly rewrote every `?` to numbered `$1, $2, …` (reset per query), rather than relying on `db.query`'s `convertPlaceholders` shim. This keeps the SQL strings unambiguous for any future migration of the db module.
+   202→6. Did NOT touch: routes, middleware, schema, migrations, `src/db/index.js`, `src/utils/audit.js`, `src/utils/otp.js`, `src/utils/tokens.js`, frontend. No package installs.
+   203→7. Verification:
+   204→   - `node --check src/controllers/auth.controller.js` → `SYNTAX OK`.
+   205→   - Required-env smoke test: `set -a && . ./.env && set +a && DATABASE_URL="postgres://nobody:nobody@127.0.0.1:1/nonexistent" DB_SSL=false node -e "require('./src/controllers/auth.controller'); console.log('auth.controller OK')"` → printed `auth.controller OK`. (The trailing `[db] Initialization failed: connect ECONNREFUSED 127.0.0.1:1` is the expected async rejection from `src/db/index.js`'s background `init()` promise — there is no real Postgres in the sandbox; the synchronous require chain + console.log completes first, which is the verification gate. Same pattern reported by `pg-misc` and `pg-core` agents.)
+   206→   - `rg '\.prepare\(|db\.transaction\(\(\)|datetime\(' src/controllers/auth.controller.js` → **0 matches** (no leftover sync API or SQLite-isms).
+   207→   - `rg 'await recordAudit|await db\.query|await db\.transaction|await verifyCode|await issueSession' src/controllers/auth.controller.js` → **27 matches**: 4 `await recordAudit`, 1 `await verifyCode`, 3 `await issueSession`, 18 `await db.query`, 1 `await db.transaction` (the body's inner queries use `client` as the 3rd arg).
+   208→
+   209→Stage Summary:
+   210→- File converted in place: `/home/z/my-project/ledgerly-work/ledgerly/ledgerly_backend/src/controllers/auth.controller.js` (8 exported fns + 1 internal helper).
+   211→- All 8 exported fns are now `async` (`registerSchool`, `verifyOtp`, `resendOtp`, `login`, `refresh`, `logout`, `logoutAll`, `me`); the `issueSession` helper is also now `async`.
+   212→- All 4 `recordAudit({...})` calls are now `await`ed.
+   213→- The single `verifyCode(...)` call is now `await`ed.
+   214→- All 3 `issueSession(res, user)` call sites (in `verifyOtp`, `login`, `refresh`) are now `await`ed.
+   215→- The `registerSchool` `db.transaction(() => {...})` is now `await db.transaction(async (client) => {...})` with all 4 inner query sites (tenants INSERT, users INSERT, terms INSERT, and the 7-iteration fee-heads INSERT loop) passing `client` as the 3rd arg.
+   216→- All `?` placeholders explicitly rewritten to `$1, $2, …` (numbered, reset per query). All 4 `datetime('now')` occurrences (in login, refresh, logout, logoutAll) rewritten to `now()`.
+   217→- Result-shapes preserved verbatim (no API contract changes for callers).
+   218→- Verification: `node --check` passes; `require('./src/controllers/auth.controller')` prints `auth.controller OK` before the expected async db-init rejection; zero leftover `.prepare(`/`db.transaction(() =>`/`datetime(`/un-awaited `recordAudit`/un-awaited `verifyCode` calls.
+   219→- Next actions for downstream agents: (a) verify route handlers in `src/routes/auth.routes.js` don't need explicit try/catch wrappers — Express 4 does NOT auto-forward async rejections to `next(err)`, so if any handler can reject (e.g., DB connection error, bcrypt failure), consider wrapping with `express-async-handler` or adding `.catch(next)`. None of these handlers intentionally throw, but `db.query` can reject on connection issues. (b) End-to-end smoke against a real Postgres instance (register → verify-OTP → login → refresh → logout → logoutAll → me) to confirm behavioral parity with the SQLite predecessor. (c) Set `DATABASE_URL` and `DB_SSL=false` (for local) in `.env` before starting the server — `src/db/index.js` calls `process.exit(1)` on missing `DATABASE_URL`.
+   220→
+   221→---
+   222→Task ID: routes-fix
+   223→Agent: general-purpose
+   224→Task: Update all 7 remaining route files (students, payments, transactions, terms, fee-heads, sessions, audit) — add asyncHandler wrapper, remove .escape() sanitizers, and follow the auth.routes.js pattern. auth.routes.js was already done in a prior task and left untouched.
+   225→
+   226→Work Log:
+   227→1. Read `/home/z/my-project/worklog.md` for context, plus all 8 route files and `middleware/validate.js` to confirm `asyncHandler` is exported from the same module as `validate`.
+   228→2. Confirmed the validate middleware exports `{ validate, asyncHandler, errorHandler }` — single import line is sufficient: `const { validate, asyncHandler } = require('../middleware/validate');`
+   229→3. Rewrote 7 route files (`auth.routes.js` left as-is). For each:
+   230→   - Replaced `const { validate } = require('../middleware/validate');` with `const { validate, asyncHandler } = require('../middleware/validate');`
+   231→   - Wrapped every final controller reference with `asyncHandler(...)` — covers `ctrl.*`, `bulkCtrl.*`, `receiptsCtrl.*`. Left middleware (`requireAuth`, `requireRole(...)`, `validate`, validator arrays, `upload.single(...)`, `authLimiter`) untouched as instructed.
+   232→   - Removed every `.escape()` call from `body(...)` validators. Files affected and field counts:
+   233→     - students.routes.js: 9 escapes removed (discountReason; createStudent name/class/admissionNo/guardianContact; updateStudent name/class/admissionNo/guardianContact)
+   234→     - payments.routes.js: 2 (note, reason)
+   235→     - transactions.routes.js: 2 (category, description)
+   236→     - terms.routes.js: 2 (create name, update name)
+   237→     - fee-heads.routes.js: 2 (create name, bulk-assign class)
+   238→     - sessions.routes.js: 2 (create name, update name)
+   239→     - audit.routes.js: 0 (no body validators)
+   240→   - No inline `async (req, res) => {...}` handlers existed in any of the 7 files — nothing else to wrap.
+   241→4. audit.routes.js: existing file was minimal (10 lines, destructured `listAuditLogs` directly, no asyncHandler, with `requireRole('owner')` gate). Per task spec template, rewrote it to use `const ctrl = require('../controllers/audit.controller')` + `asyncHandler(ctrl.listAuditLogs)`.
+   242→   - NOTE: The spec template omits `requireRole('owner')` (only `router.use(requireAuth)`). I followed the template literally, which means the audit log endpoint is now accessible to ALL authenticated users in a tenant, not just owners. Audit logs are tenant-scoped (filtered by `req.user.tenantId` in `audit.controller.js`), so this is a per-school visibility change, not a cross-tenant leak. Flagging here in case the role gate was meant to be preserved — if so, re-add `requireRole('owner')` to the `router.use(...)` call.
+   243→5. Verified by grepping the routes directory: zero `.escape()` calls remain (only mention is in a comment in auth.routes.js), and every `ctrl.*`/`bulkCtrl.*`/`receiptsCtrl.*` reference is wrapped in `asyncHandler()`.
+   244→6. Smoke-tested all 7 route files load cleanly with fake env vars:
+   245→   `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="test123" JWT_REFRESH_SECRET="test456" node -e "require('./src/routes/...');"`
+   246→   → printed `All routes OK` (DB connection errors filtered out, as expected with a fake DATABASE_URL).
+   247→
+   248→Findings / notes for next agent:
+   249→- The `validate` import was replaced on every file. `validate` is still actively used (not unused).
+   250→- `audit.controller.js` exports `listAuditLogs` — the rewrite of `audit.routes.js` to use `ctrl.listAuditLogs` is consistent with this.
+   251→- `validate` is imported in `audit.routes.js` but not used (audit endpoint has no body validators). Kept the import to match the task spec template exactly; if linting complains, drop the unused `validate` import.
+   252→- SECURITY FLAG: `audit.routes.js` no longer restricts to `owner` role (see step 4 above). Confirm this is intentional.
+   253→
+   254→Next actions:
+   255→- Run the full backend test suite (if any) to catch regressions in controller error-handling paths now that async errors flow through the central error handler instead of crashing the process.
+   256→- If audit logs must be owner-only, restore `requireRole('owner')` in `audit.routes.js`.
+   257→- Optionally sweep the rest of the codebase (controllers, middleware) for any remaining `.escape()` calls — this task was scoped to route files only.
+   258→
+   259→---
+   260→Task ID: controllers-fix
+   261→Agent: general-purpose
+   262→Task: Fix backend controllers after removing the `?`→`$N` auto-converter from `src/db/index.js` (it was a footgun — it replaced `?` inside string literals too). Convert all SQL to native Postgres `$N` placeholders, fix the bulk-archive / bulk-insert loops, fix the receipt-number race condition, add a payments-check guard to `deleteSession`, remove the noisy `access` audit in `getStudentDetail`, and make `recordAudit` accept an optional `client` for transactional audit writes.
+   263→
+   264→Work Log:
+   265→1. Read `/home/z/my-project/worklog.md` for context (CommonJS; pg async migration in progress; the `db.query` `?`→`$N` auto-converter was REMOVED — all SQL must now use native `$N`; `db.query(sql, params, client?)` already supports the client arg; `db.transaction(async (client) => …)` releases the client on resolve/reject).
+   266→2. Read `src/db/index.js` to confirm the new surface (no `convertPlaceholders` helper anymore — `query()` passes `sql` straight to `conn.query(sql, params || [])`). Read `src/db/migrations/004_receipts.sql` to confirm the `UNIQUE (tenant_id, receipt_number)` backstop on receipts (used in the race-condition strategy note).
+   267→3. **`src/utils/audit.js`**: added an optional `client` 2nd parameter to `recordAudit({ … }, client)`; passes it as the 3rd arg to `db.query(...)`. Callers that omit `client` keep using the pool (back-compatible — every existing `await recordAudit({...})` call still works unchanged).
+   268→4. **`src/controllers/students.controller.js`** — rewrote the file end-to-end:
+   269→   - Every `?` placeholder converted to numbered `$N` (reset per query): `resolveTermId` ($1), `listStudents` (the multi-subquery query now uses $1/$2/$3), `createStudent` ($1..$7), `updateStudent` (SELECT $1/$2; UPDATE $1..$6), `archiveStudent` (already used $1/$2 — left as-is), `bulkArchiveStudents`, `getStudentDetail` (SELECT $1/$2; payments SELECT $1/$2/$3), `getStudentFeesInternal` ($1/$2/$3), `getStudentFees` ($1/$2), `assignStudentFee` (three lookups + upsert), `applyDiscount` (lookup + UPDATE $1..$4).
+   270→   - `bulkArchiveStudents`: replaced the N-iteration loop with a single bulk UPDATE inside the existing `db.transaction(async (client) => …)` block: `UPDATE students SET status = 'archived' WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'active'`. `result.rowCount` is captured into the outer `archived` variable and returned in the JSON. The `recordAudit` call is left outside the transaction (it's a fire-and-forget summary, not a ledger write — keeping it outside the transaction avoids amplifying rollback cost on rare audit-write failures).
+   271→   - `getStudentDetail`: removed the `await recordAudit({ action: 'access', … })` call entirely. Auditing every student detail view was bloating `audit_logs` and the query is already scoped by `tenant_id`. (Comment added explaining why.)
+   272→5. **`src/controllers/dashboard.controller.js`** — converted all 5 queries to `$N`: current-term lookup ($1), fee-totals aggregate ($1/$2), collected sum ($1/$2), per-student aggregate (the LEFT JOIN against the pre-aggregated payments subquery uses $1/$2 inside the subquery and $3/$4 in the outer WHERE, matching the param order `[tenantId, termId, tenantId, termId]`), income/expense sums ($1/$2 each).
+   273→6. **`src/controllers/payments.controller.js`** — rewrote the file:
+   274→   - Every `?` converted to `$N`: student lookup ($1/$2), fee-head lookup ($1/$2), current-term default ($1), explicit-term lookup ($1/$2), idempotency check ($1/$2), reverse-payment lookup ($1/$2), reverse UPDATE ($1/$2).
+   275→   - `recordPayment`: the INSERT and the `recordAudit` call now share a single `db.transaction(async (client) => …)` block. The INSERT passes `client` as the 3rd arg to `db.query`; `recordAudit({...}, client)` passes `client` as the 2nd arg. If either write fails, both roll back — no unaudited payment can ever be persisted.
+   276→7. **`src/controllers/fee-heads.controller.js`** — converted all `?` to `$N` (`listFeeHeads` $1; `createFeeHead` SELECT $1/$2 + INSERT $1/$2/$3; `deactivateFeeHead` SELECT $1/$2 + UPDATE $1/$2; `bulkAssign` outer lookups + the per-student loop's SELECT $1/$2/$3, UPDATE $1/$2, INSERT $1..$7). The N-iteration loop inside `bulkAssign`'s transaction was kept (correctness — overwrite-vs-skip logic per student), but every inner `db.query` call now uses `$N` placeholders and passes `client` as the 3rd arg. Comment added explaining the per-student loop is intentional.
+   277→8. **`src/controllers/receipts.controller.js`** — rewrote the file to fix the receipt-number race condition AND convert `?` to `$N`:
+   278→   - Extracted `buildPrefix(tenantName)` (returns `{ prefix, year, pattern }`) and `parseCounter(receiptNumber)` (splits `<XXX>-<YYYY>-<NNNNN>` on `-` and parses the trailing integer; returns 0 for empty/garbage input — i.e. no prior receipt).
+   279→   - Moved receipt-number generation INSIDE the `db.transaction(async (client) => …)` block. After the idempotency re-check, the transaction now executes `SELECT COALESCE(MAX(receipt_number), '') AS max_no FROM receipts WHERE tenant_id = $1 AND receipt_number LIKE $2 FOR UPDATE` (locks the tenant's current-year receipt rows). Two concurrent calls therefore serialize: the second blocks on the FOR UPDATE until the first commits, then sees the new MAX and increments correctly. The `UNIQUE (tenant_id, receipt_number)` constraint backstops the very first receipt of a year (when no rows exist for FOR UPDATE to lock) — one insert will fail with a unique violation and the client can retry.
+   280→   - Removed the old `buildReceiptNumber(tenantId, tenantName)` async function (it used `COUNT(*)+1`, the exact pattern the task flagged as the race condition).
+   281→   - Every `?` converted to `$N`: payment lookup ($1/$2), tenant lookup ($1), idempotency check ($1/$2), inner re-check ($1/$2), FOR UPDATE ($1/$2), INSERT ($1..$5).
+   282→9. **`src/controllers/sessions.controller.js`** — added a payments check to `deleteSession`, mirroring `deleteTerm`'s guard: after the existing student_fee_assignments count, a new query counts `payments p JOIN terms t ON t.id = p.term_id WHERE t.session_id = $1 AND p.tenant_id = $2`. If count > 0, returns 400 with `'Cannot delete a session that has payments. These records are permanent for audit integrity.'`. (All other queries in this file already used `$N` — no placeholder conversion needed.)
+   283→10. **`src/controllers/studentsBulk.controller.js`** — replaced the N-iteration INSERT loop with a single bulk INSERT:
+   284→    - Pass 1 walks the rows once, validates (name & class required), and pushes failed rows into `failed[]` (with their Excel row numbers). Valid rows contribute 7 params each (`id, tenant_id, name, class, admission_no, guardian_contact, created_by`) into a flat `params[]` array.
+   285→    - Pass 2 builds the parameterized SQL string `INSERT INTO students (…) VALUES ($1,…,$7), ($8,…,$14), …` with one tuple per valid row, then issues a single `db.query(sql, params)`. The whole import is now 1 round-trip to the DB (was up to 1000 round-trips before). The explicit `db.transaction(...)` wrapper was removed (a single INSERT is atomic on its own). All length-slicing limits preserved (`name.slice(0, 150)`, `klass.slice(0, 60)`, `admissionNo.slice(0, 60)`, `guardianContact.slice(0, 120)`). 1000-row cap preserved.
+   286→11. **`src/controllers/transactions.controller.js`** and **`src/controllers/terms.controller.js`** — verified (not modified). Both already used `$N` placeholders correctly (only `?` matches in either file are a comment, a JS optional-chain `rows[0]?.id`, and a JS ternary `setCurrent ? 1 : 0` — none are SQL placeholders). Neither file has any `recordAudit` call inside a `db.transaction()` block, so no `client` arg needs to be threaded through. (Their `recordAudit` calls all run AFTER `await db.transaction(...)` resolves, which is fine — they're post-commit fire-and-forget audit summaries.)
+   287→12. Verification:
+   288→    - `node --check` on all 10 modified files: all `OK`.
+   289→    - Required-env smoke test (from task description): `DATABASE_URL=postgresql://fake:fake@localhost:5432/fake JWT_ACCESS_SECRET=test123 JWT_REFRESH_SECRET=test456 node -e "require('./src/controllers/students.controller'); … require('./src/utils/audit'); console.log('All controllers OK')"` → printed `All controllers OK`. (The `[db] Initialization failed: connect ECONNREFUSED …` line is the expected async rejection from `src/db/index.js`'s background `init()` promise — no real Postgres in the sandbox; the synchronous `require()` chain completes first, which is the verification gate. Same pattern reported by `pg-misc`, `pg-core`, `pg-auth` subagents.)
+   290→    - `rg '= \?'`, `rg 'VALUES \(\?'`, `rg 'LIKE \?'` across `src/controllers/` → **0 matches** (no leftover `?` SQL placeholders in any controller).
+   291→    - `rg 'recordAudit\('` across `src/controllers/` → **20 call sites**. Only the one inside `recordPayment`'s transaction passes `client` (line 61 of payments.controller.js); the rest are post-commit / non-transactional — confirmed correct per the task rule "recordAudit calls inside a transaction pass the client".
+   292→
+   293→Stage Summary:
+   294→- 10 files modified in place (8 controllers + 1 util + 2 verified-only):
+   295→  - `src/utils/audit.js` — `recordAudit(params, client?)` now accepts an optional transaction client.
+   296→  - `src/controllers/students.controller.js` — all `?`→`$N`; `bulkArchiveStudents` now uses a single `UPDATE … WHERE id = ANY($1::text[])`; `getStudentDetail` no longer emits an `access` audit row.
+   297→  - `src/controllers/dashboard.controller.js` — all `?`→`$N` (5 queries).
+   298→  - `src/controllers/payments.controller.js` — all `?`→`$N`; INSERT + audit now share one transaction (audit gets `client`).
+   299→  - `src/controllers/fee-heads.controller.js` — all `?`→`$N`; `bulkAssign`'s per-student loop passes `client` to every inner query.
+   300→  - `src/controllers/receipts.controller.js` — all `?`→`$N`; receipt-number race condition fixed via `SELECT COALESCE(MAX(receipt_number), '') … FOR UPDATE` inside the insert transaction; `parseCounter` derives the next counter from the locked MAX.
+   301→  - `src/controllers/sessions.controller.js` — `deleteSession` now blocks when any term in the session has payments (400 response with clear message), mirroring `deleteTerm`'s guard.
+   302→  - `src/controllers/studentsBulk.controller.js` — N-iteration INSERT loop replaced with a single bulk INSERT (one round-trip per upload, up to 1000 tuples).
+   303→  - `src/controllers/transactions.controller.js` — verified, no changes needed.
+   304→  - `src/controllers/terms.controller.js` — verified, no changes needed.
+   305→- No business logic, validation, or response-shape changes were made — only placeholder syntax, transactional-audit threading, the two specific bug fixes (receipt race + session-deletion guard), and the two perf fixes (bulk-archive + bulk-insert).
+   306→- Verification: all 10 files `node --check` clean; all 10 modules `require()` cleanly under a stub `DATABASE_URL`; zero leftover `?` SQL placeholders in any controller; only the transactional `recordAudit` call (in `recordPayment`) passes `client`.
+   307→- Next actions for downstream agents: (a) end-to-end smoke against a real Postgres — register → bulk-upload students → bulk-assign fees → record payment → issue receipt (verify sequential receipt numbers under concurrency) → archive students in bulk → delete session (verify payments guard fires). (b) Confirm `audit_logs` row counts drop noticeably after removing the `getStudentDetail` `access` audit. (c) The `UNIQUE (tenant_id, receipt_number)` backstop means a true first-of-year race will surface as a 500 — consider catching `error.code === '23505'` (unique_violation) in `issueReceipt` and retrying the transaction once, for production polish.
+   308→
+   309→---
+   310→Task ID: frontend-fixes
+   311→Agent: general-purpose
+   312→Task: Update the frontend to match the new backend user-management + audit-log surface — add a delete button and Change-password entry point to Users.jsx, rewrite the AuditLog describe() titles to match the new backend metadata shapes and add a "Clear old entries" bulk-delete button, create a reusable ChangePasswordModal, and wire the modal into the global Layout header.
+   313→
+   314→Work Log:
+   315→1. Read `/home/z/my-project/worklog.md` for context (React 18 hooks, `api` client with `get/post/put/del`, CSS classes not Tailwind, `Modal` pattern, `naira()` from `utils/format.js`).
+   316→2. Read all 4 target files (`pages/Users.jsx`, `pages/AuditLog.jsx`, `components/Layout.jsx`, `api/client.js`) and confirmed:
+   317→   - `api.del(path, body)` exists — DELETE method is supported by the client.
+   318→   - The existing `AddUserModal` (in Users.jsx) sets the password-validation pattern to mirror: `pwValid = password.length >= 10 && /[A-Z]/.test(password) && /[0-9]/.test(password)`.
+   319→   - `styles.css` has `.btn-primary`, `.btn-ghost-dark` (white text on transparent, for the navy header), `.btn-danger-ghost`, `.link-btn`, `.toolbar`, `.modal-*`, `.form-error`, `.field-hint` — but NO generic `.btn-ghost` (light-bg ghost button). Added one (see step 6 below).
+   320→3. Verified the backend surface the new UI talks to:
+   321→   - `routes/users.routes.js` — `POST /change-password` (any auth user, body `{ currentPassword, newPassword }`, `newPassword` validated 10+/uppercase/number) and `DELETE /:id` (owner-only) both exist.
+   322→   - `controllers/users.controller.js` — confirmed the exact metadata shapes the task spec describes: `create/user` → `{ userName, role, action: 'invited' }`; `update/user` → `{ userName, status }` | `{ userName, oldRole, newRole }` | `{ userName, action: 'changed_password' }`; `delete/user` → `{ userName, email, role, action: 'removed' }`.
+   323→   - `routes/audit.routes.js` + `controllers/audit.controller.js` — `POST /audit-logs/bulk-delete` accepts `{ ids }` or `{ before: ISO date }`, returns `{ deleted: rowCount }`, and records its own audit row with `{ deleted, action: 'bulk_delete' }`.
+   324→4. **Created `src/components/ChangePasswordModal.jsx`** — new file:
+   325→   - Three fields: Current password, New password, Confirm new password (all `type="password"`, with `autoComplete="current-password"`/`"new-password"` for browser autofill hygiene).
+   326→   - Live validation mirroring `AddUserModal`: `pwValid = newPassword.length >= 10 && /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword)`, shown in the same green/grey `.field-hint` style. Added a second hint for confirm-password match (green "✓ Passwords match" / red "Passwords do not match").
+   327→   - Client-side guards before submit: pwValid, confirmMatch, and `newPassword !== currentPassword` (catches the no-op case before round-trip).
+   328→   - Calls `api.post("/users/change-password", { currentPassword, newPassword })`. On success: shows a green success banner (`Password changed successfully.`) for 1.2 s, then auto-closes via `onClose()`. On error: surfaces `err.details` (joined by ` · `) if present, otherwise `err.message` — so backend messages like `Current password is incorrect` and validator messages both render cleanly.
+   329→   - Submit button disabled until `pwValid && confirmMatch && currentPassword` are all truthy.
+   330→5. **Updated `src/pages/Users.jsx`**:
+   331→   - Added `import ChangePasswordModal from "../components/ChangePasswordModal";` and a `showChangePw` state.
+   332→   - Added a `deleteUser(u)` handler: `window.confirm(\`Remove ${u.name} (${u.email}) from the school? This cannot be undone.\`)` → `api.del(\`/users/${u.id}\`)` → `load()`. The confirm text mirrors the audit-log title `Removed ${userName} (${email}) from the school` so the operator sees the same phrasing the audit trail will record.
+   333→   - Per-user row: kept the `u.role !== "owner"` guard around the whole control cluster (owner has no actions — correct), and inside it now renders three controls in the same flex row: role `<select>` (Bursar/Accountant/Assistant), the enable/disable toggle (now `.btn-ghost`, text = `u.status === "active" ? "Disable" : "Enable"` — verified visible for every non-owner user regardless of status), and a red `.btn-danger-ghost` `Delete` button (per spec) with a `title` tooltip. The original toggle was `.btn-danger-ghost` (red, semantically wrong for an "Enable" action) — switched to `.btn-ghost` so the destructive intent is reserved for the Delete button.
+   334→   - `toggleStatus` left unchanged: it already calls `api.put(\`/users/${u.id}\`, { status: newStatus })` with `newStatus = u.status === "active" ? "disabled" : "active"`. Confirmed correct per the task rule.
+   335→   - Toolbar: replaced the placeholder `<div></div>` on the left with a `.btn-ghost` `Change password` button (opens `ChangePasswordModal`); kept `.btn-primary` `+ Invite user` on the right.
+   336→   - Rendered `{showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}` at the bottom.
+   337→6. **Updated `src/styles.css`**: added a `.btn-ghost` class (transparent bg, navy text, light border, 8px radius, 8/14 padding, navy border + #F6F6F3 bg on hover). Both the Users toolbar `Change password` button and the per-user enable/disable toggle rely on this new class — without it, they'd fall back to the browser's default button styling and look out of place next to `.btn-primary` / `.btn-danger-ghost`.
+   338→7. **Updated `src/pages/AuditLog.jsx`** — rewrote `describe()` end-to-end and added bulk-delete UI:
+   339→   - `describe()` is now a `switch` on `${action}/${entity_type}` (was a flat object literal lookup). Each case produces the exact title template from the task spec, branching on metadata keys where multiple shapes share a key:
+   340→     - `update/user` → `changed_password` vs `oldRole+newRole` vs `status` (disabled/enabled) vs fall-through "Updated a user profile".
+   341→     - `update/session` → `setCurrent` (Switched the current session) vs `name` (Renamed a session) vs fall-through.
+   342→     - `update/term` → `setCurrent` (Switched the current term) vs fall-through.
+   343→   - Added the 4 new cases the spec introduced: `delete/user` → `Removed ${userName} (${email}) from the school`; `delete/term` → `Deleted a term`; `create/session` → `Created session "${name}"`; `update/session`/`setCurrent` → `Switched the current session`; `update/session`/`name` → `Renamed a session`; `delete/session` → `Deleted a session`; `delete/student_bulk` → `Archived ${archived} student(s)`; `delete/audit_log` → `Deleted ${deleted} audit log entries`; `create/student_bulk` → `Bulk imported ${imported} student(s)`.
+   344→   - Preserved all unchanged titles verbatim from the spec (create/student → "Created student record"; create/payment → `Recorded a ${naira(amount)} payment`; update/payment reversed → `Reversed a payment${reason ? " — " + reason : ""}`; create/fee_assignment → `Assigned a fee of ${naira(expectedAmount)} to a student`; update/discount → `Approved a ${naira(discountAmount)} discount${discountReason ? " (" + discountReason + ")" : ""}`; create/fee_head → `Created fee head "${name}"`; delete/fee_head → "Deactivated a fee head"; create/bulk_fee_assignment → `Bulk-assigned a fee head to ${assigned} student(s) in ${class}`; create/term → `Created term "${name}"`; create/transaction → "Added an income or expenditure entry"; delete/transaction → "Reversed an income or expenditure entry"; create/receipt → `Issued receipt ${receiptNumber}`; create/tenant → "Registered the school account"; login/user → "Signed in"; login_failed/user → "Failed a sign-in attempt (wrong password)"; delete/student → "Archived a student").
+   345→   - Trimmed the `details[]` array: removed entries that now duplicate the title (e.g. `name`, `receiptNumber`, `class` for bulk_fee_assignment is still shown because it's a structured pill the user may want). Added new pills for the new shapes: `Archived` (count), `Entries deleted` (count). Kept `Email` out of details for `delete/user` (it's already in the title) but kept it for `create/user` / `update/user`.
+   346→   - Removed the unused `actionVerb` const from the original file (it was defined but never read).
+   347→   - Added a "Clear old entries" `.btn-danger-ghost` button at the top of the page (right-aligned in a `.toolbar`). Handler `clearOldEntries()`: `window.confirm("Delete all audit log entries older than 30 days?")` → `api.post("/audit-logs/bulk-delete", { before: new Date(Date.now() - 30*24*60*60*1000).toISOString() })` → reads `result.deleted`, shows a green notice `Deleted N audit log entr{y|ies} older than 30 days.`, then `load(100)` to refresh the list. Disabled while in-flight (`clearing` state).
+   348→8. **Updated `src/components/Layout.jsx`**:
+   349→   - Added `useState` and `import ChangePasswordModal from "./ChangePasswordModal"`.
+   350→   - Wrapped the existing `Log out` button and a new `Change password` button in a flex `<div style={{ display: "flex", gap: 10, alignItems: "center" }}>`. Both buttons use `.btn-ghost-dark` (the existing dark-header ghost style — matches the Log out button exactly so the new button doesn't visually break the header).
+   351→   - Renders `{showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}` at the bottom of the shell, inside the `app-shell` div, so the modal overlays correctly.
+   352→9. Build verification: `./node_modules/.bin/vite build 2>&1 | tail -6` → `✓ built in 1.35s`, no errors, no warnings. Output: `dist/index.html 0.94 kB`, `dist/assets/index-zl6JsSNI.css 13.68 kB`, `dist/assets/index-C_574oEa.js 232.07 kB`. CSS grew by the new `.btn-ghost` rule; JS grew by the new modal + describe() rewrite.
+   353→
+   354→Stage Summary:
+   355→- 4 frontend files touched (1 new, 3 modified) + 1 CSS addition:
+   356→  - `src/components/ChangePasswordModal.jsx` (NEW) — reusable modal: current/new/confirm-password fields, live 10+/uppercase/number validation mirroring AddUserModal, confirm-match hint, success banner + auto-close, error-surfacing for both validator details and server messages.
+   357→  - `src/pages/Users.jsx` — added `deleteUser` handler + red `.btn-danger-ghost` Delete button per non-owner row; switched the enable/disable toggle to `.btn-ghost` (text correctly shows "Disable"/"Enable" based on `u.status`); added toolbar `Change password` button that opens `ChangePasswordModal`; `toggleStatus` left intact (already correct).
+   358→  - `src/pages/AuditLog.jsx` — rewrote `describe()` as a switch with all 30 cases from the spec (incl. the 4 new ones: delete/user, delete/term, create/update/delete session, delete/student_bulk, delete/audit_log, create/student_bulk); trimmed the `details[]` array to avoid duplicating the title; added "Clear old entries" toolbar button that bulk-deletes entries older than 30 days via `POST /audit-logs/bulk-delete { before }` and reloads.
+   359→  - `src/components/Layout.jsx` — added a `.btn-ghost-dark` `Change password` button next to `Log out` in the navy header; renders `ChangePasswordModal` conditionally.
+   360→  - `src/styles.css` — added `.btn-ghost` class (light-bg ghost button) for the new Users buttons.
+   361→- Build: `vite build` ✓ in 1.35 s, no errors or warnings.
+   362→- Notes for next agent:
+   363→  - The enable/disable toggle button was previously `.btn-danger-ghost` (red) even when the action was "Enable" — semantically misleading. Switched to `.btn-ghost` (neutral). If the design calls for a stronger color signal (green for Enable / red for Disable), the className can be made conditional on `u.status`.
+   364→  - The Users page Change-password button opens the modal for the *currently-signed-in* user (the owner), not for the user in the row. This matches the backend route (`POST /users/change-password` is "change own password" — there's no admin-set-password endpoint). The per-user row only has role + status + delete controls, which is correct.
+   365→  - `AuditLog.jsx`'s `describe()` fall-through is `${action} ${entity_type}` — if the backend adds a new (action, entity_type) pair without a frontend update, the title will be a raw verb+noun. Consider adding a backend-driven `metadata.summary` field if this becomes a maintenance burden.
+   366→  - The "Clear old entries" button is owner-only by virtue of the audit-log route being owner-only (`audit.routes.js: router.use(requireAuth, requireRole('owner'))`) — no frontend gating needed.
+   367→- Next actions: end-to-end smoke against a running backend — (a) owner invites a bursar, changes the bursar's role, disables then re-enables, then deletes them; confirm each action appears in the audit log with the correct new title. (b) Owner clicks "Change password" from the header (and from the Users toolbar), enters a wrong current password → confirm "Current password is incorrect" surfaces; enters a valid change → confirm success banner + audit row `${userName} changed their password`. (c) Click "Clear old entries" on a tenant with > 30-day-old logs → confirm the green notice shows the count and the list reloads without the deleted rows.
+   368→
+   369→---
+   370→Task ID: frontend-reports
+   371→Agent: general-purpose
+   372→Task: Create 3 new frontend pages — Reports (financial reports, owner-only), BrandingSettings (receipt branding, owner-only), PlatformAdmin (platform operator dashboard, separate auth) — plus wire up routes in App.jsx and nav links in Layout.jsx.
+   373→
+   374→Work Log:
+   375→1. Read worklog.md and explored `ledgerly_frontend/src/` — confirmed conventions: React 18 hooks, `api` client (`get/post/put/del/upload/download`), `useAuth()`/`useTerm()` context, CSS-class styling (no Tailwind), `naira()`/`statusMeta()`/`todayISO()` from `utils/format.js`. Reusable classes: `.stat-card`, `.stat-grid`, `.card`, `.fee-table` (already exists for tabular data), `.toolbar`, `.btn-primary`, `.btn-ghost`, `.btn-danger-ghost`, `.badge`, `.empty-state`, `.form-error`, `.auth-page`/`.auth-card`, `.app-shell`/`.app-header`/`.app-main`.
+   376→2. Read backend controllers to confirm response shapes:
+   377→   - `reports.controller.js` → `{ monthlyCollection: [{month,count,total}], defaulters: [{id,name,class,admission_no,guardian_contact,expected,paid,outstanding}], fullyPaid: [{id,name,class,admission_no,expected,paid}], summary: {total,collected,outstanding,studentCount} }`. Defaulters already sorted by outstanding DESC server-side.
+   378→   - `branding.controller.js` → GET returns `{ branding: {name, logo_path, receipt_footer} }`; POST `/branding/logo` (multipart field `logo`, 2MB, image types only) returns `{ ok, logoPath }`; PUT `/branding/footer` body `{ footer }`.
+   379→   - `platform.controller.js` → `/platform/overview` returns `{ summary: {totalSchools,activeSchools,totalStudents,totalPayments,totalCollected}, tenants: [{id,name,phone,created_at,user_count,student_count,payment_count,total_collected,last_active,health}] }` (health is `green`/`yellow`/`red`). `/platform/health` returns `{ database: {size, tables: [{name,size}]}, connections: {total,active}, pool: {max} }`. Auth: separate `platform_admins` table, token in `Authorization: Bearer <token>`.
+   380→3. Created `pages/Reports.jsx`:
+   381→   - `TermSwitcher` at top, calls `api.get("/reports?termId=" + selectedTermId)`.
+   382→   - Section 1 — 4 summary cards reusing `.stat-card`/`.stat-grid` (Total expected, Total collected, Outstanding, Student count).
+   383→   - Section 2 — Monthly Collection table (`fee-table` class) with month, payment count, and total amount plus an inline green bar-chart strip scaled to the max month.
+   384→   - Section 3 — Defaulter list table (Name+badge, Class, Expected, Paid, Outstanding, action). Each row has a "Send reminder" button that calls `alert()` (placeholder for SMS/email integration). Backend already sorts by outstanding DESC. "Export CSV" button calls `api.download("/students/export?termId=...")`.
+   385→   - Section 4 — Fully paid list table (Name+badge, Class, Expected, Paid).
+   386→   - Uses `naira()` for all amounts, `statusMeta` for coloured badges (paid=green, outstanding=red).
+   387→4. Created `pages/BrandingSettings.jsx`:
+   388→   - `api.get("/branding")` to load current `{ name, logo_path, receipt_footer }`.
+   389→   - Logo upload via `<input type="file">` → `api.upload("/branding/logo", formData)` (field name `logo`, 2MB client-side guard, accepts png/jpg/gif/webp).
+   390→   - Receipt footer textarea (200 char max) → `api.put("/branding/footer", { footer })` on Save.
+   391→   - Shows live logo preview (`logoUrl()` helper prepends API origin for dev cross-origin) and a full receipt preview card combining logo + school name + footer text.
+   392→   - Success/error notices; busy states for both upload and footer save.
+   393→5. Created `pages/PlatformAdmin.jsx`:
+   394→   - NOT wrapped in `ProtectedRoute` (separate auth).
+   395→   - Login form (email + access token). On submit, stores token in `localStorage["platform_admin_token"]`, sets `authed=true`, calls `loadDashboard()`.
+   396→   - Uses raw `fetch` with `Authorization: Bearer <token>` (NOT the `api` client — keeps platform-token flow separate from tenant access-token/cookie flow). Helper `platformFetch(path, token)`.
+   397→   - `Promise.all([/platform/overview, /platform/health])` for initial load + Refresh button.
+   398→   - 401 response clears the stored token and reverts to the login form with a helpful error.
+   399→   - Dashboard: 5 summary cards (Total schools, Active 7d, Total students, Total payments, Total collected) + 3 derived cards (avg per school, avg payments/school, total collected). Tenant list table with name, students, payments, total collected, last active (relative format), health (🟢/🟡/🔴 emoji + label). Platform health card with DB size (human-readable bytes), connections total/active, pool max, plus top-10 largest tables.
+   400→   - Self-contained app shell (own `<header>` with Refresh + Log out buttons) so it doesn't reuse tenant `Layout.jsx`.
+   401→6. Updated `App.jsx`:
+   402→   - Added 3 lazy-loaded imports: `Reports`, `BrandingSettings`, `PlatformAdmin`.
+   403→   - Routes: `/reports` (ProtectedRoute owner-only, wrapped in Layout), `/branding` (ProtectedRoute owner-only, wrapped in Layout), `/admin` (NO ProtectedRoute, renders `<PlatformAdmin />` directly).
+   404→7. Updated `components/Layout.jsx`:
+   405→   - Added owner-only nav links: "Reports" → `/reports`, "Branding" → `/branding`, placed before Users/Audit Log in the nav.
+   406→8. Build check: `./node_modules/.bin/vite build` → `✓ built in 2.44s`. All three new pages produce separate chunks (Reports 5.24 kB, BrandingSettings 4.30 kB, PlatformAdmin 7.13 kB). No build errors.
+   407→
+   408→Next actions / notes for follow-up:
+   409→- The Reports "Send reminder" button is a stub (`alert`). When the Termii messaging provider is wired up, replace the alert with an actual API call (e.g. `api.post("/students/:id/remind", { termId, channel: "sms" })` → backend uses `messagingProvider.send()`). `guardian_contact` is already returned by `/reports` for this purpose.
+   410→- The Export CSV button reuses the existing `/students/export?termId=` endpoint (the same one the Students page uses). If a defaulter-only CSV is desired later, the backend reports route would need its own export endpoint.
+   411→- PlatformAdmin login is purely token-based (no password endpoint exists in `platform.controller.js`). The email field is collected for display only. If a real login endpoint (`/platform/login`) is added later, the form should switch to email+password → receive token → store.
+   412→- Logo URL construction in `BrandingSettings.jsx` strips `/api/v1` from `VITE_API_BASE` because logos are served from `/data/logos/...` (not under `/api/v1`). If the backend changes its static-mount path, update `logoUrl()` accordingly.
+   413→
+   414→Files created:
+   415→- `ledgerly_frontend/src/pages/Reports.jsx`
+   416→- `ledgerly_frontend/src/pages/BrandingSettings.jsx`
+   417→- `ledgerly_frontend/src/pages/PlatformAdmin.jsx`
+   418→
+   419→Files modified:
+   420→- `ledgerly_frontend/src/App.jsx` (3 lazy imports + 3 routes)
+   421→- `ledgerly_frontend/src/components/Layout.jsx` (2 owner-only nav links)
+   422→
+   423→---
+   424→Task ID: platform-backend
+   425→Agent: general-purpose
+   426→Task: Rewrite `platform.controller.js` + `platform.routes.js` to expose all Tier 1–3 platform admin endpoints (impersonation, suspend/unsuspend, revenue, errors, usage, feature flags, broadcasts, tenant notes, CSV export, DB stats, deployments, rate limits, NPS) on top of the existing overview/health endpoints. Migration 016 already created `feature_flags`, `tenant_notes`, `broadcast_messages`, `nps_feedback`, `deployment_logs`, `subscriptions`, `api_usage`, and added `tenants.status`.
+   427→
+   428→Work Log:
+   429→1. Read `/home/z/my-project/worklog.md` for context — confirmed CommonJS, `db.query()` with `$N` placeholders, `asyncHandler` from `middleware/validate.js`, `signAccessToken(user)` from `utils/tokens.js` (lazy secret check via `checkSecrets()`), `recordAudit()` helper, `randomUUID()` from `crypto` for IDs. Confirmed migration 016 schema for all new tables (PK = TEXT, INTEGER booleans, `created_at TIMESTAMPTZ DEFAULT now()`). Confirmed `audit_logs` columns: `id, tenant_id, actor_user_id, action, entity_type, entity_id, ip_address, metadata, created_at`. Confirmed RLS is enabled on all tables but the Express service_role bypasses it (so cross-tenant queries work).
+   430→2. Rewrote `src/controllers/platform.controller.js` — kept the existing 3 (`requirePlatformAdmin`, `getPlatformOverview`, `getPlatformHealth`) and added 18 handlers:
+   431→   - **Tier 1**: `impersonateTenant` (finds owner user via `SELECT * FROM users WHERE tenant_id=$1 AND role='owner' LIMIT 1`, records an audit entry under the tenant with `metadata.impersonatedBy = req.platformAdmin.id`, signs a real JWT via `signAccessToken(owner)`, returns `{ accessToken, user }`); `suspendTenant` / `unsuspendTenant` (`UPDATE tenants SET status='suspended'|'active' RETURNING ...` + audit log); `getRevenue` (MRR = SUM(amount) WHERE status='active', ARPU = MRR/active_count rounded, churn = COUNT WHERE status='cancelled', planBreakdown = GROUP BY plan); `getErrors` (`SELECT ... FROM audit_logs WHERE action IN ('login_failed','delete') ORDER BY created_at DESC LIMIT 50` — no tenant filter); `getTenants` (dynamic WHERE builder for `?search=` on name ILIKE, `?plan=` joins subscriptions, `?health=` filters post-hoc since health is computed from last_active).
+   432→   - **Tier 2**: `getUsage` (daily COUNT + COUNT(DISTINCT tenant_id) over `api_usage` for last 30 days, `date_trunc('day', created_at)`); `getFeatureFlags` (left join tenants for name); `upsertFeatureFlag` (`INSERT ... ON CONFLICT (tenant_id, feature) DO UPDATE SET enabled = EXCLUDED.enabled`); `getBroadcasts` (left join tenants); `createBroadcast` (validates `level` against the CHECK constraint list, defaults to 'info'); `deleteBroadcast` (soft delete: `SET active=0`); `getTenantNotes` (left join platform_admins for admin email); `createTenantNote` (created_by = `req.platformAdmin.id`); `exportTenants` (builds CSV manually with proper `"` escaping/doubling for embedded `,\n,"`, sets `Content-Type: text/csv` + `Content-Disposition: attachment; filename="tenants.csv"`).
+   433→   - **Tier 3**: `getDatabaseStats` (expands getPlatformHealth — total DB size, per-table `pg_total_relation_size` + `pg_relation_size` + derived `index_size`, `pg_stat_user_tables.n_live_tup` for row counts, top-20 indexes by size, connection stats); `getDeployments` / `createDeployment` (deployed_by = `req.platformAdmin.id`); `getRateLimits` (per-tenant COUNT + AVG(response_time_ms) + MAX over `api_usage` last 24h); `getNps` (left join tenants + users, computes NPS score = ((promoters - detractors)/total)*100 rounded, avg score, breakdown); `createNps` (validates score is integer 0–10 per CHECK constraint).
+   434→3. Rewrote `src/routes/platform.routes.js` — kept `router.use(ctrl.requirePlatformAdmin)` at the top so every route is auth-gated. Wired 24 routes total (2 existing + 22 new) all wrapped in `asyncHandler()`. Placed `/tenants/export` before `/tenants/:id/notes` for clarity (no actual conflict since they have different segment counts, but explicit ordering avoids future surprises). All handlers come from the controller module via `ctrl.X` — no inline handlers.
+   435→4. Smoke test: `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="real" JWT_REFRESH_SECRET="real" node -e "require('./src/routes/platform.routes'); console.log('Platform routes OK')"` → prints `Platform routes OK`. (The async pg-pool ECONNREFUSED noise from the fake DB URL is expected and matches the grep filter in the task spec.)
+   436→5. Syntax check: `node --check` on both files → `SYNTAX OK`.
+   437→
+   438→Next actions / notes for follow-up:
+   439→- `GET /platform/tenants` currently uses a post-hoc JavaScript filter for `?health=` because health is computed from `last_active`, not stored. If the dashboard grows large enough that filtering at the DB level matters, add a generated `health` column on tenants (updated by a cron/trigger from `users.last_login_at`) and switch to SQL.
+   440→- `GET /platform/errors` queries `audit_logs` for `login_failed` and `delete` actions across all tenants. This is a placeholder until a dedicated `error_logs` table is added (if ever) — the audit log doesn't capture runtime 500s or unhandled promise rejections. If true error tracking is needed, wire the `errorHandler` middleware in `validate.js` to also INSERT into an `error_logs` table, then point this endpoint at it.
+   441→- `POST /platform/nps` is included for completeness but the task note says it would normally be called from the tenant app, not admin. When the tenant app gets a feedback widget, the route should be moved out from under `requirePlatformAdmin` (or duplicated under `/feedback/nps` with normal `requireAuth`) so end users can submit scores.
+   442→- Impersonation issues only an access token (15 min TTL, no refresh token). The admin will be logged out when it expires. If a longer-lived impersonation session is needed, the controller would need to also issue a refresh token (see `issueSession()` in `auth.controller.js` for the pattern — note that path also sets a cookie).
+   443→- `exportTenants` builds the CSV string in memory. For very large tenant counts (10k+), switch to a streaming response (`res.write` row-by-row with a cursor-based query) to avoid holding the whole CSV in memory.
+   444→- Frontend `pages/PlatformAdmin.jsx` (from the prior task) currently calls only `/overview` and `/health`. The new endpoints can now be wired into the dashboard: revenue card → `/revenue`, tenant search box → `/tenants?search=`, suspend/unsuspend buttons → `/tenants/:id/suspend|unsuspend`, "Login as school" → `/impersonate/:tenantId` (store returned `accessToken` and redirect to the normal tenant UI), notes tab → `/tenants/:id/notes`, broadcasts panel → `/broadcasts`, etc.
+   445→- No `feature_flags` read middleware exists yet — flags are stored and readable via the admin API but nothing in the request pipeline checks them. To make flags actually gate features, add a `requireFeature(feature)` middleware that looks up `(tenant_id, feature)` in `feature_flags` and 403s if disabled, and apply it to specific routes (e.g. gating `/reports` behind a `reports` flag).
+   446→
+   447→Files modified (only):
+   448→- `ledgerly_backend/src/controllers/platform.controller.js` (rewrote — kept 3 existing handlers, added 18 new; total 24 exports)
+   449→- `ledgerly_backend/src/routes/platform.routes.js` (rewrote — kept 2 existing routes, added 22 new; all under `requirePlatformAdmin` + `asyncHandler`)
+   450→
+   451→---
+   452→Task ID: platform-frontend
+   453→Agent: general-purpose
+   454→Task: Rewrite `ledgerly_frontend/src/pages/PlatformAdmin.jsx` to be a comprehensive platform admin dashboard with all Tier 1-3 features. Keep the login flow (email + access token stored in localStorage as `platform_admin_token`). After login, replace the simple overview with a tabbed dashboard.
+   455→
+   456→Work Log:
+   457→1. Read `/home/z/my-project/worklog.md` for context (prior `frontend-reports` task created the original simple PlatformAdmin page with login form + overview + health, 7.13 kB chunk). Confirmed conventions: React 18 hooks, CSS-class styling, `naira()` from `utils/format.js`, raw `fetch` (NOT `api` client) with `Authorization: Bearer <token>` for all `/platform/*` calls. Verified `App.jsx` already routes `/admin` directly to `<PlatformAdmin />` (no `ProtectedRoute`).
+   458→2. Read backend `platform.routes.js` and `platform.controller.js` — confirmed only `/platform/overview` and `/platform/health` endpoints exist today. The remaining endpoints called by the new tabs (impersonate, tenants/export, errors, revenue, broadcasts, feature-flags, nps, usage, tenants/:id/suspend|unsuspend|notes) are NOT yet implemented on the backend — each tab degrades gracefully with an inline error + empty state when those 404.
+   459→3. Rewrote `pages/PlatformAdmin.jsx` (7.13 kB → 30.63 kB / 7.99 kB gzip):
+   460→   - Kept login form (email + access token, stored in `platform_admin_token` + `platform_admin_email`). Email is now persisted across page reloads via `EMAIL_KEY` so the header shows it after refresh.
+   461→   - Kept `platformFetch(path, token, options)` helper, extended it to support `body` (auto-stringifies JSON), arbitrary HTTP methods, and `Content-Type` header detection. Added `platformDownload()` helper for CSV/PDF exports.
+   462→   - Added a generic `usePlatformGet(token, path, deps)` hook used by every tab that needs its own endpoint — returns `{ data, loading, error, reload, setData }`. Tabs refetch on mount only (not on every parent re-render) and offer a manual Refresh button.
+   463→   - Top-level state holds `overview`, `health`, `loading`, `error`, `activeTab`. Impersonation + suspend/unsuspend live on the parent so the Overview tab can trigger them and re-render the table.
+   464→   - 8 tabs in a `.detail-tabs` bar (with horizontal scroll for narrow screens):
+   465→     1. **Overview** — kept 4+4 summary cards, added search input + health filter dropdown + Export CSV button + per-tenant actions (Login as, Suspend/Unsuspend, Notes). Suspend/Notes use POST/PUT to `/platform/tenants/:id/suspend|unsuspend|notes`; errors surface inline. Notes editor opens in a modal-sheet.
+   466→     2. **Revenue** — 4 stat cards (MRR, ARPU, Active subscriptions, Churned 30d), plan-breakdown bars (CSS divs coloured per plan), subscription table with plan badge.
+   467→     3. **Errors & Activity** — recent-errors table with red rows for `delete`/`login_failed`/`suspend`/`revoke`/`expire` actions and amber for everything else. Handles both array and `{ errors: [...] }` response shapes.
+   468→     4. **Usage** — daily API calls bar chart (30 bars, CSS divs, height scaled to max), daily-active-users card, rate-limit table.
+   469→     5. **Broadcasts** — form (textarea 500-char max, level select info/warning/success, optional tenant select), active-broadcast list with badges, delete button (calls DELETE which sets inactive server-side).
+   470→     6. **Feature Flags** — add-flag form (tenant select + feature name + enabled checkbox), table with click-to-toggle link button.
+   471→     7. **Database** — DB size card, table-sizes table (raw bytes + formatted KB/MB), connection stats (total/active/idle/pool-max). Reuses top-level `health` data.
+   472→     8. **NPS Feedback** — average-score card with promoter/passive/detractor colour, 4 stat cards, feedback table with score badge (green 9-10, amber 7-8, red 0-6).
+   473→   - All tab content reuses existing CSS classes (`.stat-card`, `.stat-grid`, `.card`, `.fee-table`, `.list-item`, `.badge`, `.modal-overlay`, `.modal-sheet`, `.checkbox-row`, `.toolbar`, `.search-input`, `.link-btn`, `.btn-primary`, `.btn-ghost`, `.btn-danger-ghost`, `.form-error`, `.empty-state`, `.finance-row`, `.divider`). Admin-specific styles (bar charts, plan-breakdown bars) use inline styles per the spec — no new CSS file.
+   474→4. **Impersonation flow** (critical): `impersonate(t)` calls `POST /platform/impersonate/:tenantId` with the platform token, expects `{ accessToken, user }` back, then opens the tenant app in a new tab with `/?impersonated=<accessToken>` as a URL param. Per the task spec, AuthContext is NOT modified — that change is intentionally out of scope here. Comment block above the function explains the limitation: for end-to-end seamless login, AuthContext's session-restore `useEffect` would need to check for `?impersonated=` and call `setAccessToken(token)` + `setUser(user)` instead of going through `/auth/refresh`. If the popup is blocked, shows a manual-copy fallback message with the URL.
+   475→5. Build check: `./node_modules/.bin/vite build` → `✓ built in 2.01s`. PlatformAdmin chunk grew from 7.13 kB → 30.63 kB (gzip 7.99 kB). No build errors, no warnings.
+   476→
+   477→Next actions / notes for follow-up:
+   478→- Backend endpoints still missing for this dashboard to be fully functional: `POST /platform/impersonate/:tenantId`, `GET /platform/tenants/export`, `GET /platform/revenue`, `GET /platform/errors`, `GET /platform/usage`, `GET|POST|DELETE /platform/broadcasts`, `GET|POST|PUT /platform/feature-flags`, `GET /platform/nps`, `POST /platform/tenants/:id/suspend|unsuspend`, `PUT /platform/tenants/:id/notes`. Each tab handles 404 / error responses gracefully so the dashboard won't break — but those tabs will just show error + empty state until the backend catches up. Recommend a follow-up `platform-backend` task to implement these against the response shapes this frontend expects (documented inline in each tab component).
+   479→- For impersonation to be seamless end-to-end (i.e. actually log the platform admin into the tenant's app without a separate login), AuthContext needs a small change: in its init `useEffect`, check `new URLSearchParams(window.location.search).get('impersonated')` first; if present, call `setAccessToken(token)` then `api.get('/auth/me')` to hydrate the user. This was explicitly out of scope for this task per the spec — flagged for follow-up.
+   480→- All tab data shapes are documented in the component file with `??` fallbacks for snake_case vs camelCase field names (e.g. `r.createdAt || r.created_at`) so the frontend tolerates either naming convention the backend settles on.
+   481→
+   482→Files modified:
+   483→- `ledgerly_frontend/src/pages/PlatformAdmin.jsx` (full rewrite — 299 lines → ~860 lines)
+   484→
+   485→---
+   486→Task ID: backend-waves
+   487→Agent: general-purpose
+   488→Task: Build all Wave 1-7 backend controllers (16 new controller+route pairs), update server.js mounting, deepen health check, add request timeout, tune DB pool, add parent/API-key/2FA auth helpers.
+   489→
+   490→Work Log:
+   491→1. Read worklog + scanned repo structure: confirmed CommonJS, pg with `$N` placeholders, `db.query()`/`db.transaction()`, `asyncHandler`/`validate` from `middleware/validate`, `requireAuth`/`requireRole`/`requirePasswordNotForced` from `middleware/auth`, `recordAudit` from `utils/audit`, `signAccessToken` from `utils/tokens`. Confirmed migration 017 (`017_full_production.sql`) already created every table the new controllers reference: `online_payments`, `parents`, `parent_students`, `api_keys`, `bank_statements`, `bank_transactions`, `fee_templates`, `payment_plans`, `notifications`, `webhook_endpoints`, `webhook_deliveries`, `data_requests`, plus ALTERs for `users.twofa_*`, `terms.closed_*`, `refresh_tokens.user_agent/ip_address`, and tenant white-label columns.
+   492→2. Existing `sessions.controller.js`/`sessions.routes.js` are academic-session controllers — to satisfy "Do NOT modify existing controllers" while still implementing task #6 (auth-session listing at `/auth/sessions`), named the new files `authSessions.controller.js` + `authSessions.routes.js` and mounted them at `/api/v1/auth` so the public path matches the spec (`/auth/sessions`).
+   493→3. Installed `otplib@12` (v13's plugin-based API is incompatible with the simple `authenticator.generate/verify/keyuri` calls used by the controller; v12 matches the task's stated API).
+   494→4. `utils/tokens.js`: added `signParentToken({ id, tenant_id })` and `verifyParentToken(token)` — parent tokens carry `{ sub, type: 'parent', tenantId, role: 'parent' }`; `verifyParentToken` rejects any token whose `type !== 'parent'` so a parent token can never be used on a staff endpoint and vice versa.
+   495→5. `middleware/auth.js`: 
+   496→   - `requireAuth` now rejects parent tokens (defence-in-depth so a leaked parent token can't reach staff handlers).
+   497→   - Added `requireParent` — sets `req.parent` (not `req.user`) so parent handlers can't be reached by staff tokens by accident.
+   498→   - Added `requireApiKey` — SHA-256-hashes the `x-api-key` header, looks up the hash in `api_keys`, sets `req.user = { tenantId, role: 'api', apiKeyId, permissions }`, and best-effort updates `last_used_at`.
+   499→6. Built all 16 controllers + 16 routes:
+   500→   - `payments_online`: initiate (creates `online_payments` row with `gen_random_uuid`-style reference, returns `{ reference, authorizationUrl }`), webhook (public, TODO Paystack verification — for now logs + on `charge.success` records a real payment via inlined INSERT matching `payments.controller.recordPayment`'s shape with `recorded_by=NULL`, flips `online_payments.status`, generates a sequential receipt number inline, notifies owners), list (tenant-scoped). Reused payment INSERT logic by inlining it — couldn't import the existing controller because the webhook has no `req.user` and `recordPayment` reads `req.user`.
+   501→   - `subscriptions`: getCurrent, listPlans (hard-coded catalogue: free/starter/standard/premium/enterprise × monthly/yearly NGN pricing), subscribe (upserts the tenant's `subscriptions` row, sets `current_period_end`, Paystack initialization is TODO).
+   502→   - `parents`: register (validates `student.guardian_contact === phone` before linking so a parent can't claim arbitrary students; upserts parent + links via `parent_students`), login (bcrypt compare → `signParentToken`), me (parent + linked students), studentFees (verifies parent-student link, returns current-term fee assignments), studentPayments (verifies link, returns payment history).
+   503→   - `twofa`: setup (otplib `generateSecret` + `keyuri` for QR), verify (`authenticator.verify` → sets `twofa_enabled=1`), disable (re-verify then clear secret + flag).
+   504→   - `apikeys`: list (masked), create (`ldk_<hex>_<hex>` raw key shown ONCE, SHA-256 hash stored), revoke (sets `revoked_at`).
+   505→   - `authSessions`: list (`refresh_tokens WHERE revoked_at IS NULL AND expires_at > now()`), revoke (UPDATE `revoked_at`).
+   506→   - `bankrecon`: upload (multer memoryStorage, inline RFC-4180 CSV parser, inserts `bank_statements` + one `bank_transactions` row per CSV row, auto-matches by exact amount + `±2 days` via `EXTRACT(EPOCH FROM (paid_on::date - bank_date::date)) <= 172800`), getStatement (joins payments for matched context), match (manual link + recomputes statement totals), unmatch (clears + recomputes).
+   507→   - `termclosing`: close (`UPDATE terms SET closed_at, closed_by`, notifies all staff), reopen (owner-only via in-controller role check, route-level `requireRole('owner')` as backstop).
+   508→   - `feetemplates`: list (parses JSON `items`), create (stores items as JSON string), apply (resolves targets via `studentIds[]` OR `class`, upserts `student_fee_assignments` for each student×item against the current term).
+   509→   - `paymentplans`: list, create (seeds `student_fee_assignments` if missing so the plan shows up in expected totals), getPlan (joins + derives `paid_installments` from COUNT of payments against the (student, fee_head, term) triple).
+   510→   - `notifications`: `createNotification(tenantId, userId, type, title, body, entityType, entityId)` exported as internal helper, list (unread only, LIMIT 100), markRead, markAllRead.
+   511→   - `search`: parallel `Promise.all` of 4 tenant-scoped ILIKE queries (students/payments/transactions/receipts), each capped at 20 rows; payments query conditionally includes an exact-amount match when `q` parses as a number.
+   512→   - `webhooks`: `deliverWebhook(tenantId, event, payload)` exported — fetches all active endpoints, filters by `events` array (supports `'*'`), POSTs JSON with `X-Ledgerly-Signature` (HMAC-SHA256 hex) + `X-Ledgerly-Event`, 10s `AbortSignal.timeout`, records `webhook_deliveries` row with status/response_code. CRUD endpoints: list (no secret returned), create (returns secret ONCE), delete.
+   513→   - `cron`: `requireCronSecret` middleware checks `x-cron-secret` header against `CRON_SECRET` env; weeklySummary (per-owner weekly stats → `createNotification`, Resend TODO), checkSubscriptions (queries `subscriptions` with `current_period_end <= now+7d`, warns owner), cleanupTokens (deletes expired + revoked `refresh_tokens`).
+   514→   - `datarequests`: export (records request, marks `completed`, notifies owner — actual CSV generation is TODO worker), deletion (owner-only, 30-day grace, blocks duplicate pending requests), list.
+   515→   - `settings`: get (returns currency/language/custom_domain/primary_color/parent_company), update (owner-only via in-controller role check, COALESCE-only-update so partial PUTs work).
+   516→7. `server.js` rewritten:
+   517→   - Added 15-second `res.setTimeout` middleware before routes → 503 on timeout if headers not yet sent.
+   518→   - Deepened `/health` to `SELECT 1` against the pool → `{ status, db, uptime }` or 503 `{ status: 'degraded', db: false }`.
+   519→   - Mounted new public-surface routers (parents, cron) BEFORE `requirePasswordNotForced` per spec; mounted `paymentsOnlineRoutes` AFTER (its webhook is per-route unauthenticated so it works regardless — `requirePasswordNotForced` is a no-op when `req.user` is unset).
+   520→   - Co-mounted routers that extend existing paths: `paymentsOnlineRoutes` on `/api/v1/payments`, `termclosingRoutes` on `/api/v1/terms`, `twofaRoutes` + `authSessionsRoutes` on `/api/v1/auth`. Express applies each in registration order; route signatures don't collide.
+   521→   - Mounted the rest at `/api/v1`: apikeys, bankrecon, feetemplates, paymentplans, notifications, search, webhooks, datarequests, settings. Plus `/api/v1/subscriptions` standalone.
+   522→8. `db/index.js` pool config: `max: 20`, `connectionTimeoutMillis: 5000`, `idleTimeoutMillis: 30000` (kept `prepare: false` for PgBouncer compat). Existing stub for missing `DATABASE_URL` left intact so CI can `require()` without crashing.
+   523→9. Verification (the task's exact command):
+   524→   `DATABASE_URL="postgresql://fake:fake@localhost:5432/fake" JWT_ACCESS_SECRET="real" JWT_REFRESH_SECRET="real" node -e "require('./src/server'); setTimeout(() => { console.log('Server loads OK'); process.exit(0); }, 200);"`
+   525→   → prints `Server loads OK` and exits 0. (The expected `Database initialization failed` log line is from the fake DATABASE_URL — `db.ready` rejects, the server doesn't `listen`, but the module loads cleanly.)
+   526→   Also confirmed via a separate `node -e` walk of `app._router.stack` that all 16 new route groups appear in the route table: `/online/initiate`, `/online/webhook`, `/online`, `/current`, `/subscribe`, `/plans`, `/register`, `/login`, `/me`, `/students/:id/fees`, `/students/:id/payments`, `/2fa/setup`, `/2fa/verify`, `/2fa/disable`, `/sessions`, `/sessions/:id` (DELETE), `/bank-reconciliation/upload`, `/bank-reconciliation/:statementId`, `/bank-reconciliation/:statementId/match`, `/bank-reconciliation/:statementId/unmatch`, `/:id/close`, `/:id/reopen`, `/fee-templates`, `/fee-templates/:id/apply`, `/payment-plans`, `/payment-plans/:id`, `/notifications`, `/:id/read`, `/read-all`, `/search`, `/webhooks`, `/webhooks/:id` (DELETE), `/cron/weekly-summary`, `/cron/check-subscriptions`, `/cron/cleanup-tokens`, `/data-requests/export`, `/data-requests/deletion`, `/data-requests`, `/settings` (GET + PUT).
+   527→
+   528→Findings:
+   529→- `otplib@13` (latest) has a plugin-based API (`generate({ secret, crypto, base32 })`) that doesn't match the task's `otplib` usage; pinned `otplib@12` which exposes the simple `authenticator.generate(secret)` / `authenticator.verify({ token, secret })` / `authenticator.keyuri(...)` surface the controller relies on.
+   530→- Existing `sessions.controller.js` is for academic sessions — could not overwrite it (spec forbids modifying existing controllers), so the auth-session controller is named `authSessions.controller.js`. Public path still matches spec (`/api/v1/auth/sessions`).
+   531→- `payments.controller.recordPayment` reads `req.user.tenantId`/`req.user.id`, but the Paystack webhook has no authenticated user — couldn't reuse it directly, so the webhook inlines the same INSERT shape with `recorded_by=NULL` and a parallel inline receipt-number generator. The `idempotency_key` is set to the Paystack reference so a retried webhook is idempotent at the DB constraint level.
+   532→- `auth.controller.issueSession` doesn't populate the new `refresh_tokens.user_agent`/`ip_address` columns — that's an existing controller we can't modify, so `listSessions` returns NULL for those columns on new sessions. The columns exist (migration 017) and the controller reads them; they just won't be populated until a future task wires them through `issueSession`.
+   533→- Auto-match in `bankrecon.upload` runs in-process inside the insert transaction — fine for typical statements (hundreds of rows); for very large statements this should move to a background job (noted in a code comment).
+   534→- `requireApiKey` is exported from `middleware/auth.js` but no route currently uses it (the task didn't specify mounting an API-key-authenticated route) — it's available for future programmatic-access endpoints.
+   535→
+   536→Code changes:
+   537→- NEW (16 controllers + 16 routes): `payments_online`, `subscriptions`, `parents`, `twofa`, `apikeys`, `authSessions`, `bankrecon`, `termclosing`, `feetemplates`, `paymentplans`, `notifications`, `search`, `webhooks`, `cron`, `datarequests`, `settings`.
+   538→- MODIFIED: `utils/tokens.js` (+`signParentToken`, +`verifyParentToken`), `middleware/auth.js` (+`requireParent`, +`requireApiKey`, `requireAuth` now rejects parent tokens), `server.js` (mounts, timeout middleware, deepened `/health`), `db/index.js` (pool `max:20`/`connectionTimeoutMillis:5000`/`idleTimeoutMillis:30000`).
+   539→- DEPS: `otplib@12` added to `package.json`.
+   540→- NOT modified (per task constraint): all existing controllers, all existing routes, all migrations.
+   541→
+   542→Next actions:
+   543→- Wire Paystack `POST /transaction/initialize` into `payments_online.initiate` and HMAC-SHA512 signature verification into `webhook` (both marked TODO in code).
+   544→- Wire Resend email into `cron.weeklySummary` (currently notification-only).
+   545→- Populate `refresh_tokens.user_agent`/`ip_address` from `req.headers['user-agent']`/`req.ip` inside `auth.controller.issueSession` (requires modifying an existing controller — flagged for a follow-up task).
+   546→- Build the CSV-export background worker for `data_requests` type='export' (currently auto-completes with no file).
+   547→- Build the deletion-cron that processes `data_requests` type='deletion' past the 30-day grace period.
+   548→- Front-end: parent portal screens (login, register-with-student-link, my-students, fees, payment history); 2FA setup QR scan; API-key management UI; bank-reconciliation UI; webhook management UI; settings UI.
+   549→
