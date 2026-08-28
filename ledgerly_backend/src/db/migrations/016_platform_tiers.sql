@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 -- Insert free subscriptions for all existing tenants
 INSERT INTO subscriptions (id, tenant_id, plan, amount, status)
-SELECT lower(hex(randomblob(16))), id, 'free', 0, 'active' FROM tenants
+SELECT gen_random_uuid()::text, id, 'free', 0, 'active' FROM tenants
 ON CONFLICT DO NOTHING;
 
 -- Rate limit tracking (per-tenant API usage)
