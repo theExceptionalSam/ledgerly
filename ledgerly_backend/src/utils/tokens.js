@@ -35,6 +35,26 @@ function verifyAccessToken(token) {
   return jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 }
 
+// --- Parent portal tokens ---
+// Parent auth is a separate token type from user auth (parent portal vs staff
+// dashboard). The payload's `type` field lets middleware distinguish them so a
+// parent token can't be used to call staff endpoints (and vice versa).
+function signParentToken(parent) {
+  checkSecrets();
+  return jwt.sign(
+    { sub: parent.id, type: 'parent', tenantId: parent.tenant_id, role: 'parent' },
+    process.env.JWT_ACCESS_SECRET,
+    { expiresIn: ACCESS_TTL }
+  );
+}
+
+function verifyParentToken(token) {
+  checkSecrets();
+  const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+  if (payload.type !== 'parent') throw new Error('Not a parent token');
+  return payload;
+}
+
 function newRefreshToken() {
   const raw = crypto.randomBytes(48).toString('hex');
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -46,4 +66,4 @@ function hashRefreshToken(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
-module.exports = { signAccessToken, verifyAccessToken, newRefreshToken, hashRefreshToken };
+module.exports = { signAccessToken, verifyAccessToken, signParentToken, verifyParentToken, newRefreshToken, hashRefreshToken };

@@ -21,6 +21,7 @@ if (process.env.SENTRY_DSN) {
   logger.info('Sentry initialized');
 }
 
+// --- Existing routes ---
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/students.routes');
 const paymentRoutes = require('./routes/payments.routes');
@@ -29,11 +30,29 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const auditRoutes = require('./routes/audit.routes');
 const termsRoutes = require('./routes/terms.routes');
 const feeHeadRoutes = require('./routes/fee-heads.routes');
-const sessionsRoutes = require('./routes/sessions.routes');
+const sessionsRoutes = require('./routes/sessions.routes'); // academic sessions
 const userRoutes = require('./routes/users.routes');
 const reportsRoutes = require('./routes/reports.routes');
 const brandingRoutes = require('./routes/branding.routes');
 const platformRoutes = require('./routes/platform.routes');
+
+// --- New Wave 1-7 routes ---
+const paymentsOnlineRoutes = require('./routes/payments_online.routes');
+const subscriptionsRoutes = require('./routes/subscriptions.routes');
+const parentsRoutes = require('./routes/parents.routes');
+const twofaRoutes = require('./routes/twofa.routes');
+const apikeysRoutes = require('./routes/apikeys.routes');
+const authSessionsRoutes = require('./routes/authSessions.routes');
+const bankreconRoutes = require('./routes/bankrecon.routes');
+const termclosingRoutes = require('./routes/termclosing.routes');
+const feetemplatesRoutes = require('./routes/feetemplates.routes');
+const paymentplansRoutes = require('./routes/paymentplans.routes');
+const notificationsRoutes = require('./routes/notifications.routes');
+const searchRoutes = require('./routes/search.routes');
+const webhooksRoutes = require('./routes/webhooks.routes');
+const cronRoutes = require('./routes/cron.routes');
+const datarequestsRoutes = require('./routes/datarequests.routes');
+const settingsRoutes = require('./routes/settings.routes');
 
 const app = express();
 
@@ -48,22 +67,68 @@ app.use(cookieParser());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use('/api/', apiLimiter);
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Per-request timeout — if a handler takes >15s, respond 503 instead of hanging
+// the client. Belt-and-suspenders: most handlers complete in <500ms, but a slow
+// DB query or a stuck external call shouldn't tie up a connection indefinitely.
+app.use((req, res, next) => {
+  res.setTimeout(15000, () => {
+    if (!res.headersSent) res.status(503).json({ error: 'Request timeout' });
+  });
+  next();
+});
 
+// Deepened health check — verifies the DB pool can serve a query, not just that
+// the process is alive. Used by the load balancer to drain traffic on DB issues.
+app.get('/health', async (req, res) => {
+  try {
+    await db.query('SELECT 1');
+    res.json({ status: 'ok', db: true, uptime: process.uptime() });
+  } catch {
+    res.status(503).json({ status: 'degraded', db: false });
+  }
+});
+
+// --- Public routes (before requirePasswordNotForced) ---
+// These routers contain a mix of public + authenticated endpoints. requirePasswordNotForced
+// is a no-op when req.user is undefined, so mounting the full router here is safe —
+// the public endpoints (parent register/login, cron, payments webhook) never set req.user,
+// and the authenticated endpoints inside apply their own requireAuth/requireParent.
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/parents', parentsRoutes);
+app.use('/api/v1', cronRoutes); // /cron/* — CRON_SECRET protected, no user auth
+
 app.use(requirePasswordNotForced);
+
+// --- Authenticated routes (after requirePasswordNotForced) ---
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/payments', paymentsOnlineRoutes); // adds /online/* (webhook is per-route public)
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
 app.use('/api/v1/terms', termsRoutes);
+app.use('/api/v1/terms', termclosingRoutes); // adds /:id/close, /:id/reopen
 app.use('/api/v1/fee-heads', feeHeadRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/branding', brandingRoutes);
 app.use('/api/v1/platform', platformRoutes);
+
+// New Wave 1-7 protected routes. twofa + authSessions extend /auth/* (mounted
+// alongside authRoutes — Express applies both routers in registration order).
+app.use('/api/v1/auth', twofaRoutes);
+app.use('/api/v1/auth', authSessionsRoutes);
+app.use('/api/v1/subscriptions', subscriptionsRoutes);
+app.use('/api/v1', apikeysRoutes);
+app.use('/api/v1', bankreconRoutes);
+app.use('/api/v1', feetemplatesRoutes);
+app.use('/api/v1', paymentplansRoutes);
+app.use('/api/v1', notificationsRoutes);
+app.use('/api/v1', searchRoutes);
+app.use('/api/v1', webhooksRoutes);
+app.use('/api/v1', datarequestsRoutes);
+app.use('/api/v1', settingsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

@@ -27,12 +27,18 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Students = lazy(() => import("./pages/Students"));
 const Finance = lazy(() => import("./pages/Finance"));
 const AuditLog = lazy(() => import("./pages/AuditLog"));
-const Terms = lazy(() => import("./pages/Terms"));
+const Sessions = lazy(() => import("./pages/Sessions")); // Sessions & Terms (academic) — renamed from Terms.jsx to free the /terms route
+const Terms = lazy(() => import("./pages/Terms")); // Terms of Service (legal) — public at /terms
 const FeeHeads = lazy(() => import("./pages/FeeHeads"));
 const Users = lazy(() => import("./pages/Users"));
 const Reports = lazy(() => import("./pages/Reports"));
 const BrandingSettings = lazy(() => import("./pages/BrandingSettings"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const ParentPortal = lazy(() => import("./pages/ParentPortal"));
+const Security = lazy(() => import("./pages/Security"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
 
 function PageLoader() {
   return <div className="page-loading">Loading…</div>;
@@ -50,6 +56,11 @@ export default function App() {
               <Route path="/verify" element={<VerifyEmail />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              {/* Public marketing / legal / parent routes */}
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/parent" element={<ParentPortal />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/terms" element={<Terms />} />
               <Route path="/" element={
                 <ProtectedRoute>
                   <Layout><Dashboard /></Layout>
@@ -70,9 +81,9 @@ export default function App() {
                   <Layout><FeeHeads /></Layout>
                 </ProtectedRoute>
               } />
-              <Route path="/terms" element={
+              <Route path="/sessions" element={
                 <ProtectedRoute>
-                  <Layout><Terms /></Layout>
+                  <Layout><Sessions /></Layout>
                 </ProtectedRoute>
               } />
               <Route path="/users" element={
@@ -93,6 +104,16 @@ export default function App() {
               <Route path="/branding" element={
                 <ProtectedRoute roles={["owner"]}>
                   <Layout><BrandingSettings /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/security" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><Security /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/onboarding" element={
+                <ProtectedRoute>
+                  <Layout><Onboarding /></Layout>
                 </ProtectedRoute>
               } />
               {/* Platform admin — separate auth (no ProtectedRoute) */}

@@ -44,7 +44,13 @@ if (process.env.DB_SSL === 'false') {
 const pool = new Pool({
   connectionString,
   ssl: sslConfig,
-  max: 10,
+  // Pool sizing: 20 conns is enough for ~200 concurrent requests at typical
+  // query latency (~50ms). Connection timeout is short so a stuck pool fails
+  // fast instead of queuing requests; idle conns are reaped quickly to avoid
+  // holding database-side slots open during quiet periods.
+  max: 20,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
   // Supabase/Render poolers use PgBouncer in transaction mode, which breaks
   // prepared statements. Disable them for broad compatibility.
   prepare: false,
