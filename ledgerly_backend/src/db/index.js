@@ -118,7 +118,7 @@ async function init() {
 
 const ready = init().catch((err) => {
   console.error('[db] Initialization failed:', err.message);
-  module.exports = { query: async () => { throw new Error("DATABASE_URL not configured"); }, transaction: async () => { throw new Error("DATABASE_URL not configured"); }, ready: new Promise((_, reject) => setTimeout(() => reject(new Error("DATABASE_URL not configured")), 0)), pool: { end: async () => {} } }; return;
+  throw err;
 });
 
 module.exports = { query, transaction, ready, pool };
