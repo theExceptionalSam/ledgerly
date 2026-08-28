@@ -7,6 +7,19 @@ const { corsMiddleware, securityHeaders, apiLimiter } = require('./middleware/se
 const { errorHandler } = require('./middleware/validate');
 const { requirePasswordNotForced } = require('./middleware/auth');
 const db = require('./db');
+const logger = require('./utils/logger');
+
+// --- Sentry (optional, env-gated) ---
+let Sentry;
+if (process.env.SENTRY_DSN) {
+  Sentry = require('@sentry/node');
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.1,
+  });
+  logger.info('Sentry initialized');
+}
 
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/students.routes');
@@ -21,27 +34,21 @@ const userRoutes = require('./routes/users.routes');
 
 const app = express();
 
-// Trust the first proxy hop only (e.g. a load balancer) — needed for correct req.ip and rate limiting
 app.set('trust proxy', 1);
 
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
-app.use(morgan('combined'));
+
+// Use morgan for HTTP request logging, piped through pino in production
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use('/api/', apiLimiter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Auth routes are exempt from the force-change-password gate
 app.use('/api/v1/auth', authRoutes);
-
-// Change-password endpoint is also exempt (users with force_change_password
-// need to be able to change it). It's mounted before the gate.
-const userRoutes = require('./routes/users.routes');
-app.use('/api/v1/users', userRoutes); // handles its own auth + role checks
-
-// Force-change-password gate: after auth + change-password, before everything else.
+app.use('/api/v1/users', userRoutes);
 app.use(requirePasswordNotForced);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -53,22 +60,23 @@ app.use('/api/v1/fee-heads', feeHeadRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+
+// Sentry error handler must be before the custom error handler
+if (Sentry) app.use(Sentry.Handlers.errorHandler());
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 let server;
 
 db.ready.then(() => {
-  server = app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
+  server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
 }).catch((err) => {
-  console.error('[server] Could not start — database initialization failed:', err.message);
+  logger.error({ err: err.message, msg: 'Database initialization failed' });
   process.exit(1);
 });
 
-// Graceful shutdown — stop accepting new connections and close the DB pool
-// so in-flight requests finish cleanly on deploy/restart.
 function shutdown(signal) {
-  console.log(`[server] ${signal} received, shutting down...`);
+  logger.info({ signal, msg: 'Shutting down' });
   if (server) {
     server.close(() => {
       db.pool.end().then(() => process.exit(0)).catch(() => process.exit(0));

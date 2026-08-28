@@ -2,6 +2,7 @@ const { randomUUID } = require('crypto');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 const { generateReceiptPdf } = require('../utils/receipt-pdf');
+const logger = require('../utils/logger');
 
 // Phase 3: Receipts.
 // One receipt per payment. If a receipt already exists for the payment, return
@@ -102,7 +103,7 @@ async function issueReceipt(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
     res.send(pdfBuffer);
   }).catch((err) => {
-    console.error('[receipts] PDF generation failed:', err.message, err.stack);
+    logger.error({ err: err.message, stack: err.stack, msg: 'PDF generation failed' });
     res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
   });
 }

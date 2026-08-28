@@ -1,4 +1,5 @@
 const { validationResult } = require('express-validator');
+const logger = require('../utils/logger');
 
 function validate(req, res, next) {
   const errors = validationResult(req);
@@ -8,19 +9,13 @@ function validate(req, res, next) {
   next();
 }
 
-// Wrap async route handlers so rejected promises reach the error handler.
-// Express 4 does NOT auto-catch async errors — without this, any DB error
-// becomes an unhandled promise rejection and crashes the process.
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-// Central error handler — never leaks stack traces or internal details.
 function errorHandler(err, req, res, next) {
-  // If headers already sent (e.g. during a streaming response), delegate to
-  // Express's default handler — calling res.status() here would throw.
   if (res.headersSent) return next(err);
-  console.error(`[${new Date().toISOString()}] ${err.message}`);
+  logger.error({ err: err.message, path: req.path, method: req.method, msg: 'Request error' });
   if (err.message === 'Origin not permitted by CORS policy') {
     return res.status(403).json({ error: 'Origin not permitted' });
   }
