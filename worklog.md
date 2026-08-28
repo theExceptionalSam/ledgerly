@@ -365,3 +365,57 @@ Stage Summary:
   - `AuditLog.jsx`'s `describe()` fall-through is `${action} ${entity_type}` — if the backend adds a new (action, entity_type) pair without a frontend update, the title will be a raw verb+noun. Consider adding a backend-driven `metadata.summary` field if this becomes a maintenance burden.
   - The "Clear old entries" button is owner-only by virtue of the audit-log route being owner-only (`audit.routes.js: router.use(requireAuth, requireRole('owner'))`) — no frontend gating needed.
 - Next actions: end-to-end smoke against a running backend — (a) owner invites a bursar, changes the bursar's role, disables then re-enables, then deletes them; confirm each action appears in the audit log with the correct new title. (b) Owner clicks "Change password" from the header (and from the Users toolbar), enters a wrong current password → confirm "Current password is incorrect" surfaces; enters a valid change → confirm success banner + audit row `${userName} changed their password`. (c) Click "Clear old entries" on a tenant with > 30-day-old logs → confirm the green notice shows the count and the list reloads without the deleted rows.
+
+---
+Task ID: frontend-reports
+Agent: general-purpose
+Task: Create 3 new frontend pages — Reports (financial reports, owner-only), BrandingSettings (receipt branding, owner-only), PlatformAdmin (platform operator dashboard, separate auth) — plus wire up routes in App.jsx and nav links in Layout.jsx.
+
+Work Log:
+1. Read worklog.md and explored `ledgerly_frontend/src/` — confirmed conventions: React 18 hooks, `api` client (`get/post/put/del/upload/download`), `useAuth()`/`useTerm()` context, CSS-class styling (no Tailwind), `naira()`/`statusMeta()`/`todayISO()` from `utils/format.js`. Reusable classes: `.stat-card`, `.stat-grid`, `.card`, `.fee-table` (already exists for tabular data), `.toolbar`, `.btn-primary`, `.btn-ghost`, `.btn-danger-ghost`, `.badge`, `.empty-state`, `.form-error`, `.auth-page`/`.auth-card`, `.app-shell`/`.app-header`/`.app-main`.
+2. Read backend controllers to confirm response shapes:
+   - `reports.controller.js` → `{ monthlyCollection: [{month,count,total}], defaulters: [{id,name,class,admission_no,guardian_contact,expected,paid,outstanding}], fullyPaid: [{id,name,class,admission_no,expected,paid}], summary: {total,collected,outstanding,studentCount} }`. Defaulters already sorted by outstanding DESC server-side.
+   - `branding.controller.js` → GET returns `{ branding: {name, logo_path, receipt_footer} }`; POST `/branding/logo` (multipart field `logo`, 2MB, image types only) returns `{ ok, logoPath }`; PUT `/branding/footer` body `{ footer }`.
+   - `platform.controller.js` → `/platform/overview` returns `{ summary: {totalSchools,activeSchools,totalStudents,totalPayments,totalCollected}, tenants: [{id,name,phone,created_at,user_count,student_count,payment_count,total_collected,last_active,health}] }` (health is `green`/`yellow`/`red`). `/platform/health` returns `{ database: {size, tables: [{name,size}]}, connections: {total,active}, pool: {max} }`. Auth: separate `platform_admins` table, token in `Authorization: Bearer <token>`.
+3. Created `pages/Reports.jsx`:
+   - `TermSwitcher` at top, calls `api.get("/reports?termId=" + selectedTermId)`.
+   - Section 1 — 4 summary cards reusing `.stat-card`/`.stat-grid` (Total expected, Total collected, Outstanding, Student count).
+   - Section 2 — Monthly Collection table (`fee-table` class) with month, payment count, and total amount plus an inline green bar-chart strip scaled to the max month.
+   - Section 3 — Defaulter list table (Name+badge, Class, Expected, Paid, Outstanding, action). Each row has a "Send reminder" button that calls `alert()` (placeholder for SMS/email integration). Backend already sorts by outstanding DESC. "Export CSV" button calls `api.download("/students/export?termId=...")`.
+   - Section 4 — Fully paid list table (Name+badge, Class, Expected, Paid).
+   - Uses `naira()` for all amounts, `statusMeta` for coloured badges (paid=green, outstanding=red).
+4. Created `pages/BrandingSettings.jsx`:
+   - `api.get("/branding")` to load current `{ name, logo_path, receipt_footer }`.
+   - Logo upload via `<input type="file">` → `api.upload("/branding/logo", formData)` (field name `logo`, 2MB client-side guard, accepts png/jpg/gif/webp).
+   - Receipt footer textarea (200 char max) → `api.put("/branding/footer", { footer })` on Save.
+   - Shows live logo preview (`logoUrl()` helper prepends API origin for dev cross-origin) and a full receipt preview card combining logo + school name + footer text.
+   - Success/error notices; busy states for both upload and footer save.
+5. Created `pages/PlatformAdmin.jsx`:
+   - NOT wrapped in `ProtectedRoute` (separate auth).
+   - Login form (email + access token). On submit, stores token in `localStorage["platform_admin_token"]`, sets `authed=true`, calls `loadDashboard()`.
+   - Uses raw `fetch` with `Authorization: Bearer <token>` (NOT the `api` client — keeps platform-token flow separate from tenant access-token/cookie flow). Helper `platformFetch(path, token)`.
+   - `Promise.all([/platform/overview, /platform/health])` for initial load + Refresh button.
+   - 401 response clears the stored token and reverts to the login form with a helpful error.
+   - Dashboard: 5 summary cards (Total schools, Active 7d, Total students, Total payments, Total collected) + 3 derived cards (avg per school, avg payments/school, total collected). Tenant list table with name, students, payments, total collected, last active (relative format), health (🟢/🟡/🔴 emoji + label). Platform health card with DB size (human-readable bytes), connections total/active, pool max, plus top-10 largest tables.
+   - Self-contained app shell (own `<header>` with Refresh + Log out buttons) so it doesn't reuse tenant `Layout.jsx`.
+6. Updated `App.jsx`:
+   - Added 3 lazy-loaded imports: `Reports`, `BrandingSettings`, `PlatformAdmin`.
+   - Routes: `/reports` (ProtectedRoute owner-only, wrapped in Layout), `/branding` (ProtectedRoute owner-only, wrapped in Layout), `/admin` (NO ProtectedRoute, renders `<PlatformAdmin />` directly).
+7. Updated `components/Layout.jsx`:
+   - Added owner-only nav links: "Reports" → `/reports`, "Branding" → `/branding`, placed before Users/Audit Log in the nav.
+8. Build check: `./node_modules/.bin/vite build` → `✓ built in 2.44s`. All three new pages produce separate chunks (Reports 5.24 kB, BrandingSettings 4.30 kB, PlatformAdmin 7.13 kB). No build errors.
+
+Next actions / notes for follow-up:
+- The Reports "Send reminder" button is a stub (`alert`). When the Termii messaging provider is wired up, replace the alert with an actual API call (e.g. `api.post("/students/:id/remind", { termId, channel: "sms" })` → backend uses `messagingProvider.send()`). `guardian_contact` is already returned by `/reports` for this purpose.
+- The Export CSV button reuses the existing `/students/export?termId=` endpoint (the same one the Students page uses). If a defaulter-only CSV is desired later, the backend reports route would need its own export endpoint.
+- PlatformAdmin login is purely token-based (no password endpoint exists in `platform.controller.js`). The email field is collected for display only. If a real login endpoint (`/platform/login`) is added later, the form should switch to email+password → receive token → store.
+- Logo URL construction in `BrandingSettings.jsx` strips `/api/v1` from `VITE_API_BASE` because logos are served from `/data/logos/...` (not under `/api/v1`). If the backend changes its static-mount path, update `logoUrl()` accordingly.
+
+Files created:
+- `ledgerly_frontend/src/pages/Reports.jsx`
+- `ledgerly_frontend/src/pages/BrandingSettings.jsx`
+- `ledgerly_frontend/src/pages/PlatformAdmin.jsx`
+
+Files modified:
+- `ledgerly_frontend/src/App.jsx` (3 lazy imports + 3 routes)
+- `ledgerly_frontend/src/components/Layout.jsx` (2 owner-only nav links)
