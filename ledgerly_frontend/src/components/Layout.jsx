@@ -50,6 +50,12 @@ export default function Layout({ children }) {
             <NavLink to="/fee-heads" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Fee Heads</NavLink>
             <NavLink to="/terms" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Sessions & Terms</NavLink>
             {user.role === "owner" && (
+              <NavLink to="/reports" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Reports</NavLink>
+            )}
+            {user.role === "owner" && (
+              <NavLink to="/branding" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Branding</NavLink>
+            )}
+            {user.role === "owner" && (
               <NavLink to="/users" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Users</NavLink>
             )}
             {user.role === "owner" && (

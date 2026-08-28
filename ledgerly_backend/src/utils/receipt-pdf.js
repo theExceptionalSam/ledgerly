@@ -408,6 +408,17 @@ function generateReceiptPdf({
           { align: 'center', width: CONTENT_WIDTH }
         );
 
+      // "Powered by Ledgerly" branding line
+      doc.fillColor(COLORS.navy)
+        .font('Helvetica-Bold')
+        .fontSize(9)
+        .text(
+          'Powered by Ledgerly',
+          MARGIN,
+          footerY + 22,
+          { align: 'center', width: CONTENT_WIDTH }
+        );
+
       doc.end();
     } catch (err) {
       reject(err);
