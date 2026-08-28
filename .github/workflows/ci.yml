@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ledgerly_backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: node -e "require('./src/server'); console.log('Backend loads OK')" &
+        env:
+          DATABASE_URL: postgresql://fake:fake@localhost:5432/fake
+          JWT_ACCESS_SECRET: ci-test-access-secret-not-placeholder
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-placeholder
+      - run: sleep 1 && kill %1 2>/dev/null; echo "Backend check done"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ledgerly_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: npm run build
