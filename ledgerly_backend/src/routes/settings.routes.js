@@ -7,9 +7,9 @@ const ctrl = require('../controllers/settings.controller');
 const router = Router();
 router.use(requireAuth);
 
-router.get('/settings', asyncHandler(ctrl.getSettings));
+router.get('/', asyncHandler(ctrl.getSettings));
 
-router.put('/settings', [
+router.put('/', [
   body('currency').optional().isLength({ min: 3, max: 3 }).isAlpha(),
   body('language').optional().isIn(['en', 'fr', 'ha', 'yo', 'ig']),
   body('primary_color').optional().matches(/^#[0-9A-Fa-f]{6}$/).withMessage('Must be a #RRGGBB hex color'),

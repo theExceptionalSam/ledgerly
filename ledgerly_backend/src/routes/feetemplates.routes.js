@@ -7,9 +7,9 @@ const ctrl = require('../controllers/feetemplates.controller');
 const router = Router();
 router.use(requireAuth);
 
-router.get('/fee-templates', asyncHandler(ctrl.listTemplates));
+router.get('/', asyncHandler(ctrl.listTemplates));
 
-router.post('/fee-templates', requireRole('owner', 'accountant'), [
+router.post('/', requireRole('owner', 'accountant'), [
   body('name').trim().isLength({ min: 1, max: 120 }),
   body('className').optional().trim().isLength({ max: 80 }),
   body('items').isArray({ min: 1 }),
@@ -17,7 +17,7 @@ router.post('/fee-templates', requireRole('owner', 'accountant'), [
   body('items.*.expectedAmount').isFloat({ gt: 0 }),
 ], validate, asyncHandler(ctrl.createTemplate));
 
-router.post('/fee-templates/:id/apply', requireRole('owner', 'accountant'), [
+router.post('/:id/apply', requireRole('owner', 'accountant'), [
   param('id').isUUID(),
   body('studentIds').optional().isArray(),
   body('class').optional().trim().isLength({ min: 1, max: 80 }),

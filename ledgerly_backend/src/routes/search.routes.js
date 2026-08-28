@@ -7,7 +7,7 @@ const ctrl = require('../controllers/search.controller');
 const router = Router();
 router.use(requireAuth);
 
-router.get('/search', [
+router.get('/', [
   query('q').optional().trim().isLength({ max: 200 }),
 ], validate, asyncHandler(ctrl.search));
 

@@ -7,9 +7,9 @@ const ctrl = require('../controllers/paymentplans.controller');
 const router = Router();
 router.use(requireAuth);
 
-router.get('/payment-plans', asyncHandler(ctrl.listPlans));
+router.get('/', asyncHandler(ctrl.listPlans));
 
-router.post('/payment-plans', requireRole('owner', 'accountant'), [
+router.post('/', requireRole('owner', 'accountant'), [
   body('studentId').isUUID(),
   body('feeHeadId').isUUID(),
   body('termId').isUUID(),
@@ -19,6 +19,6 @@ router.post('/payment-plans', requireRole('owner', 'accountant'), [
   body('lateFee').optional().isFloat({ min: 0 }),
 ], validate, asyncHandler(ctrl.createPlan));
 
-router.get('/payment-plans/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.getPlan));
+router.get('/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.getPlan));
 
 module.exports = router;

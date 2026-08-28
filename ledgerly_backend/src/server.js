@@ -89,46 +89,41 @@ app.get('/health', async (req, res) => {
 });
 
 // --- Public routes (before requirePasswordNotForced) ---
-// These routers contain a mix of public + authenticated endpoints. requirePasswordNotForced
-// is a no-op when req.user is undefined, so mounting the full router here is safe —
-// the public endpoints (parent register/login, cron, payments webhook) never set req.user,
-// and the authenticated endpoints inside apply their own requireAuth/requireParent.
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/parents', parentsRoutes);
-app.use('/api/v1', cronRoutes); // /cron/* — CRON_SECRET protected, no user auth
+app.use('/api/v1/cron', cronRoutes); // FIXED: was '/api/v1' which intercepted ALL routes
 
 app.use(requirePasswordNotForced);
 
 // --- Authenticated routes (after requirePasswordNotForced) ---
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
-app.use('/api/v1/payments', paymentsOnlineRoutes); // adds /online/* (webhook is per-route public)
+app.use('/api/v1/payments', paymentsOnlineRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
 app.use('/api/v1/terms', termsRoutes);
-app.use('/api/v1/terms', termclosingRoutes); // adds /:id/close, /:id/reopen
+app.use('/api/v1/terms', termclosingRoutes);
 app.use('/api/v1/fee-heads', feeHeadRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/branding', brandingRoutes);
 app.use('/api/v1/platform', platformRoutes);
 
-// New Wave 1-7 protected routes. twofa + authSessions extend /auth/* (mounted
-// alongside authRoutes — Express applies both routers in registration order).
+// New Wave 1-7 protected routes
 app.use('/api/v1/auth', twofaRoutes);
 app.use('/api/v1/auth', authSessionsRoutes);
 app.use('/api/v1/subscriptions', subscriptionsRoutes);
-app.use('/api/v1', apikeysRoutes);
-app.use('/api/v1', bankreconRoutes);
-app.use('/api/v1', feetemplatesRoutes);
-app.use('/api/v1', paymentplansRoutes);
-app.use('/api/v1', notificationsRoutes);
-app.use('/api/v1', searchRoutes);
-app.use('/api/v1', webhooksRoutes);
-app.use('/api/v1', datarequestsRoutes);
-app.use('/api/v1', settingsRoutes);
+app.use('/api/v1/api-keys', apikeysRoutes);
+app.use('/api/v1/bank-reconciliation', bankreconRoutes);
+app.use('/api/v1/fee-templates', feetemplatesRoutes);
+app.use('/api/v1/payment-plans', paymentplansRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/search', searchRoutes);
+app.use('/api/v1/webhooks', webhooksRoutes);
+app.use('/api/v1/data-requests', datarequestsRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

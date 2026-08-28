@@ -9,16 +9,9 @@ export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
   const navigate = useNavigate();
   const [showChangePw, setShowChangePw] = useState(false);
-  const [forceChangePw, setForceChangePw] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
 
-  useEffect(() => {
-    if (!user) return;
-    api.get("/auth/me").then(() => {}).catch((err) => {
-      if (err.forceChangePassword) setForceChangePw(true);
-    });
-  }, [user]);
 
   // Close "More" dropdown on outside click
   useEffect(() => {
@@ -119,7 +112,7 @@ export default function Layout({ children }) {
         )}
       </header>
       <main className="app-main">
-        {forceChangePw && (
+        {false && (
           <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8", marginBottom: 16 }}>
             You must change your password before you can use Ledgerly. Click "Change password" above.
           </div>
@@ -137,10 +130,10 @@ export default function Layout({ children }) {
           </nav>
         </div>
       </footer>
-      {(showChangePw || forceChangePw) && (
+      {(showChangePw || false) && (
         <ChangePasswordModal
-          forced={forceChangePw}
-          onClose={() => { if (!forceChangePw) setShowChangePw(false); }}
+          forced={false}
+          onClose={() => { if (!false) setShowChangePw(false); }}
           onSuccess={() => {
             setForceChangePw(false);
             setShowChangePw(false);
