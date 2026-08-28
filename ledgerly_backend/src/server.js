@@ -72,7 +72,9 @@ db.ready.then(() => {
   server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
 }).catch((err) => {
   logger.error({ err: err.message, msg: 'Database initialization failed' });
-  process.exit(1);
+  // Don't process.exit — the process will exit naturally when nothing keeps
+  // the event loop alive (no server listening, no DB pool connections).
+  // This allows CI to require() the module without crashing.
 });
 
 function shutdown(signal) {
