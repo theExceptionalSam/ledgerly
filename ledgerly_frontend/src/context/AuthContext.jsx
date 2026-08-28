@@ -22,6 +22,25 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     setUnauthorizedHandler(clearSession);
     (async () => {
+      // Check for impersonation token in URL (from platform admin "Login as")
+      const params = new URLSearchParams(window.location.search);
+      const impersonatedToken = params.get("impersonated");
+      if (impersonatedToken) {
+        setAccessToken(impersonatedToken);
+        // Clean the URL
+        window.history.replaceState({}, "", "/");
+        try {
+          const data = await api.get("/auth/me");
+          setUser(data.user);
+          setSchoolName(data.tenant?.name || "");
+          lastActivityRef.current = Date.now();
+        } catch {
+          clearSession();
+        }
+        setInitializing(false);
+        return;
+      }
+
       try {
         const token = await api.refreshAccessToken();
         if (token) {
