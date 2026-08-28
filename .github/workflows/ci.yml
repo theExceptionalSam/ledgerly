@@ -23,23 +23,6 @@ jobs:
       - name: Check backend modules load
         run: |
           node -e "
-            const { execSync } = require('child_process');
-            try {
-              execSync('node -e \"require(\\'./src/db\\');\"', {
-                env: {
-                  ...process.env,
-                  DATABASE_URL: 'postgresql://fake:fake@localhost:5432/fake',
-                  JWT_ACCESS_SECRET: 'ci-test-access-secret-not-placeholder',
-                  JWT_REFRESH_SECRET: 'ci-test-refresh-secret-not-placeholder'
-                },
-                timeout: 5000
-              });
-              console.log('DB module loads OK');
-            } catch(e) {
-              // DB init calls process.exit(1) when it can't connect — that's expected in CI
-              console.log('DB module loaded (connection failed as expected)');
-            }
-            // Now verify all route/controller modules can be required
             const modules = [
               './src/routes/auth.routes',
               './src/routes/students.routes',
@@ -75,7 +58,7 @@ jobs:
             let ok = true;
             for (const m of modules) {
               try { require(m); } catch(e) {
-                console.error('FAILED to load', m, ':', e.message);
+                console.error('FAILED:', m, e.message);
                 ok = false;
               }
             }
