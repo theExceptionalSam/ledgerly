@@ -46,4 +46,14 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests. Please slow down.' },
 });
 
-module.exports = { corsMiddleware, securityHeaders, authLimiter, apiLimiter };
+// Export limiter — prevents bulk data scraping (5 per minute per IP)
+const exportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.tenantId || req.ip,
+  message: { error: 'Too many exports. Please wait a minute before exporting again.' },
+});
+
+module.exports = { corsMiddleware, securityHeaders, authLimiter, apiLimiter, exportLimiter };

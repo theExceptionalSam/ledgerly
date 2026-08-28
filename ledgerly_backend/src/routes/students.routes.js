@@ -3,6 +3,7 @@ const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { exportLimiter } = require('../middleware/security');
 const ctrl = require('../controllers/students.controller');
 const bulkCtrl = require('../controllers/studentsBulk.controller');
 
@@ -26,7 +27,7 @@ router.get('/', [
   query('termId').optional().isUUID(),
 ], validate, asyncHandler(ctrl.listStudents));
 router.get('/bulk/template', asyncHandler(bulkCtrl.bulkTemplate));
-router.get('/export', asyncHandler(async (req, res) => {
+router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
   const db = require('../db');
   const { tenantId } = req.user;
   let termId = req.query.termId;

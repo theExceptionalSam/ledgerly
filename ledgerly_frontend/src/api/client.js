@@ -56,6 +56,7 @@ async function request(path, { method = "GET", body, retry = true } = {}) {
     err.details = payload?.details;
     err.status = res.status;
     err.payload = payload;
+    err.forceChangePassword = payload?.forceChangePassword || false;
     throw err;
   }
   return payload;

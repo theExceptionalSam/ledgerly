@@ -5,7 +5,7 @@ import { api } from "../api/client";
 // Live-validates the new password with the same rules as AddUserModal:
 // 10+ chars, at least one uppercase letter, at least one number.
 // Calls POST /users/change-password with { currentPassword, newPassword }.
-export default function ChangePasswordModal({ onClose }) {
+export default function ChangePasswordModal({ onClose, forced, onSuccess }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -37,11 +37,12 @@ export default function ChangePasswordModal({ onClose }) {
     try {
       await api.post("/users/change-password", { currentPassword, newPassword });
       setSuccess(true);
-      // Brief success message before closing — gives the user confirmation.
-      setTimeout(() => onClose(), 1200);
+      if (onSuccess) {
+        setTimeout(() => onSuccess(), 1000);
+      } else {
+        setTimeout(() => onClose(), 1200);
+      }
     } catch (err) {
-      // Surface validation details if present (e.g. password-strength list),
-      // otherwise show the server message (e.g. "Current password is incorrect").
       if (err.details && err.details.length > 0) {
         setError(err.details.map((d) => d.message).join(" · "));
       } else {
@@ -53,12 +54,18 @@ export default function ChangePasswordModal({ onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={forced ? undefined : onClose}>
       <form className="modal-sheet" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-header">
-          <div className="modal-title">Change password</div>
-          <button type="button" className="modal-close" onClick={onClose} disabled={busy}>✕</button>
+          <div className="modal-title">{forced ? "Change your password" : "Change password"}</div>
+          {!forced && <button type="button" className="modal-close" onClick={onClose} disabled={busy}>✕</button>}
         </div>
+
+        {forced && (
+          <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8" }}>
+            Your account was created with a temporary password. You must set a new password before you can use Ledgerly.
+          </div>
+        )}
 
         {success ? (
           <div className="form-error" style={{ background: "#E7F3EC", color: "#1B7A43", borderColor: "#C5E0CF" }}>

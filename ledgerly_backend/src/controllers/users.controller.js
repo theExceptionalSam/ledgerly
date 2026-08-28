@@ -30,8 +30,8 @@ async function createUser(req, res) {
   const id = randomUUID();
   const passwordHash = await bcrypt.hash(password, 12);
   await db.query(`
-    INSERT INTO users (id, tenant_id, name, email, password_hash, role, email_verified)
-    VALUES ($1, $2, $3, $4, $5, $6, 1)
+    INSERT INTO users (id, tenant_id, name, email, password_hash, role, email_verified, force_change_password)
+    VALUES ($1, $2, $3, $4, $5, $6, 1, 1)
   `, [id, tenantId, name, email.toLowerCase(), passwordHash, role]);
 
   await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'user', entityId: id, ipAddress: req.ip, metadata: { userName: name, role, action: 'invited' } });
@@ -99,7 +99,7 @@ async function changePassword(req, res) {
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
   await db.transaction(async (client) => {
-    await db.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [passwordHash, user.id], client);
+    await db.query(`UPDATE users SET password_hash = $1, force_change_password = 0 WHERE id = $2`, [passwordHash, user.id], client);
     // Revoke all other sessions (keep this one)
     await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [user.id], client);
   });

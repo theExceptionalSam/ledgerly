@@ -5,6 +5,7 @@ const morgan = require('morgan');
 
 const { corsMiddleware, securityHeaders, apiLimiter } = require('./middleware/security');
 const { errorHandler } = require('./middleware/validate');
+const { requirePasswordNotForced } = require('./middleware/auth');
 const db = require('./db');
 
 const authRoutes = require('./routes/auth.routes');
@@ -32,7 +33,16 @@ app.use('/api/', apiLimiter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// Auth routes are exempt from the force-change-password gate
 app.use('/api/v1/auth', authRoutes);
+
+// Change-password endpoint is also exempt (users with force_change_password
+// need to be able to change it). It's mounted before the gate.
+const userRoutes = require('./routes/users.routes');
+app.use('/api/v1/users', userRoutes); // handles its own auth + role checks
+
+// Force-change-password gate: after auth + change-password, before everything else.
+app.use(requirePasswordNotForced);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
@@ -41,7 +51,6 @@ app.use('/api/v1/audit-logs', auditRoutes);
 app.use('/api/v1/terms', termsRoutes);
 app.use('/api/v1/fee-heads', feeHeadRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
-app.use('/api/v1/users', userRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use(errorHandler);

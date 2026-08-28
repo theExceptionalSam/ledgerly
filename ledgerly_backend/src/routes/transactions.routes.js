@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { body, param, query } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { exportLimiter } = require('../middleware/security');
 const ctrl = require('../controllers/transactions.controller');
 
 const router = Router();
@@ -12,7 +13,7 @@ router.get('/', [
   query('termId').optional().isUUID(),
 ], validate, asyncHandler(ctrl.listTransactions));
 
-router.get('/export', asyncHandler(async (req, res) => {
+router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
   const db = require('../db');
   const { tenantId } = req.user;
   let termId = req.query.termId;

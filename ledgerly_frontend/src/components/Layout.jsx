@@ -1,12 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { api } from "../api/client";
 
 export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
   const navigate = useNavigate();
   const [showChangePw, setShowChangePw] = useState(false);
+  const [forceChangePw, setForceChangePw] = useState(false);
+
+  // Check on mount if the user needs to change their password
+  useEffect(() => {
+    if (!user) return;
+    api.get("/auth/me").then(() => {}).catch((err) => {
+      if (err.forceChangePassword) setForceChangePw(true);
+    });
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();
@@ -49,9 +59,26 @@ export default function Layout({ children }) {
         )}
       </header>
       <main className="app-main">
+        {forceChangePw && (
+          <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8", marginBottom: 16 }}>
+            You must change your password before you can use Ledgerly. Click "Change password" above.
+          </div>
+        )}
         {children}
       </main>
-      {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
+      {(showChangePw || forceChangePw) && (
+        <ChangePasswordModal
+          forced={forceChangePw}
+          onClose={() => {
+            if (!forceChangePw) setShowChangePw(false);
+          }}
+          onSuccess={() => {
+            setForceChangePw(false);
+            setShowChangePw(false);
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
