@@ -29,14 +29,20 @@ const LOCK_MINUTES = 15;
 // Issues a fresh access token + refresh token (rotated), stores the refresh
 // token hash, and sets the refresh cookie. Now async because the refresh-token
 // insert goes through the async pg client. Callers MUST await this.
-async function issueSession(res, user) {
+//
+// `req` is required so we can record the user_agent + ip_address (added to
+// refresh_tokens in migration 017) — this powers the "Active sessions" list in
+// Settings → Security so an owner can see which devices have an active session.
+async function issueSession(res, req, user) {
   const accessToken = signAccessToken(user);
   const { raw, hash, expiresAt } = newRefreshToken();
+  const userAgent = req.headers['user-agent'] || null;
+  const ipAddress = req.ip || null;
 
   await db.query(`
-    INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-    VALUES ($1, $2, $3, $4)
-  `, [randomUUID(), user.id, hash, expiresAt]);
+    INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, user_agent, ip_address)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `, [randomUUID(), user.id, hash, expiresAt, userAgent, ipAddress]);
 
   res.cookie(REFRESH_COOKIE, raw, cookieOptions);
   return accessToken;
@@ -108,7 +114,7 @@ async function verifyOtp(req, res) {
   await db.query(`UPDATE users SET email_verified = 1 WHERE id = $1`, [user.id]);
   await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'update', entityType: 'user', entityId: user.id, ipAddress: req.ip, metadata: { emailVerified: true } });
 
-  const accessToken = await issueSession(res, user);
+  const accessToken = await issueSession(res, req, user);
   const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
   res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
 }
@@ -164,7 +170,7 @@ async function login(req, res) {
     });
   }
 
-  const accessToken = await issueSession(res, user);
+  const accessToken = await issueSession(res, req, user);
   // Include tenant name so the frontend doesn't need an extra /auth/me call.
   const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
   res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
@@ -197,7 +203,7 @@ async function refresh(req, res) {
 
   // Rotate: revoke the used refresh token and issue a new one (prevents replay of stolen tokens)
   await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, [record.id]);
-  const accessToken = await issueSession(res, user);
+  const accessToken = await issueSession(res, req, user);
   res.json({ accessToken });
 }
 

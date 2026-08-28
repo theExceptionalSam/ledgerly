@@ -12,6 +12,11 @@ router.post('/', [
   body('url').isURL({ require_protocol: true, protocols: ['http', 'https'] }),
   body('events').isArray({ min: 1 }),
 ], validate, asyncHandler(ctrl.createEndpoint));
+router.patch('/:id', [
+  param('id').isUUID(),
+  body('active').optional().isInt({ min: 0, max: 1 }),
+  body('events').optional().isArray(),
+], validate, asyncHandler(ctrl.updateEndpoint));
 router.delete('/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.deleteEndpoint));
 
 module.exports = router;

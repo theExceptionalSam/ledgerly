@@ -53,6 +53,7 @@ const webhooksRoutes = require('./routes/webhooks.routes');
 const cronRoutes = require('./routes/cron.routes');
 const datarequestsRoutes = require('./routes/datarequests.routes');
 const settingsRoutes = require('./routes/settings.routes');
+const receiptsRoutes = require('./routes/receipts.routes');
 
 const app = express();
 
@@ -124,6 +125,7 @@ app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/webhooks', webhooksRoutes);
 app.use('/api/v1/data-requests', datarequestsRoutes);
 app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/receipts', receiptsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

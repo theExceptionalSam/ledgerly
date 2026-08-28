@@ -189,4 +189,14 @@ async function unmatch(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { upload, getStatement, match, unmatch };
+async function listStatements(req, res) {
+  const { tenantId } = req.user;
+  const { rows } = await db.query(
+    `SELECT id, filename, status, total_records, matched, unmatched, created_at
+     FROM bank_statements WHERE tenant_id = $1 ORDER BY created_at DESC`,
+    [tenantId]
+  );
+  res.json({ statements: rows });
+}
+
+module.exports = { upload, getStatement, match, unmatch, listStatements };

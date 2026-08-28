@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.get('/', asyncHandler(ctrl.listTemplates));
 
-router.post('/', requireRole('owner', 'accountant'), [
+router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('name').trim().isLength({ min: 1, max: 120 }),
   body('className').optional().trim().isLength({ max: 80 }),
   body('items').isArray({ min: 1 }),
@@ -17,7 +17,7 @@ router.post('/', requireRole('owner', 'accountant'), [
   body('items.*.expectedAmount').isFloat({ gt: 0 }),
 ], validate, asyncHandler(ctrl.createTemplate));
 
-router.post('/:id/apply', requireRole('owner', 'accountant'), [
+router.post('/:id/apply', requireRole('owner', 'bursar', 'accountant'), [
   param('id').isUUID(),
   body('studentIds').optional().isArray(),
   body('class').optional().trim().isLength({ min: 1, max: 80 }),

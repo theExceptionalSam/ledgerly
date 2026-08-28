@@ -9,6 +9,17 @@ const { createNotification } = require('./notifications.controller');
 // cleanup). Failures are logged and surfaced via the response, so the scheduler
 // can alert on non-2xx.
 
+// Lazy-init: the Resend client is only constructed when an API key is present,
+// so the server boots fine in dev without an email transport configured.
+// Same pattern as src/utils/otp.js — kept local so a failure here can't break OTP.
+let resend = null;
+function getResend() {
+  if (resend) return resend;
+  const { Resend } = require('resend');
+  resend = new Resend(process.env.RESEND_API_KEY);
+  return resend;
+}
+
 const CRON_SECRET = process.env.CRON_SECRET;
 
 function requireCronSecret(req, res, next) {
@@ -19,8 +30,9 @@ function requireCronSecret(req, res, next) {
   next();
 }
 
-// Weekly summary email to every owner. The "email" is a TODO (Resend integration)
-// — for now we record a notification so the owner sees it in-app on next login.
+// Weekly summary email to every owner. Records an in-app notification AND sends
+// the same summary via Resend (if configured) — so owners who haven't logged in
+// still get their weekly recap.
 async function weeklySummary(req, res) {
   const { rows: owners } = await db.query(
     `SELECT u.id, u.tenant_id, u.email, u.name, t.name AS tenant_name
@@ -42,8 +54,33 @@ async function weeklySummary(req, res) {
     const s = stats[0] || {};
     const body = `Hi ${owner.name}, here's your weekly summary for ${owner.tenant_name}: ${s.payments} payments collected totalling ${s.collected}. Active students: ${s.students}.`;
     await createNotification(owner.tenant_id, owner.id, 'weekly_summary', 'Your weekly summary', body, null, null);
-    // TODO: send via Resend — needs a verified domain. For now, log so we can verify the job ran.
-    logger.info({ email: owner.email, msg: 'Weekly summary queued (notification only)' });
+
+    // Send the same summary via Resend when an API key is configured. Failures
+    // here are logged but do NOT abort the job — the in-app notification above
+    // still went out, so the owner will see the recap on next login.
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const fromEmail = process.env.RESEND_FROM_EMAIL || 'Ledgerly <onboarding@resend.dev>';
+        await getResend().emails.send({
+          from: fromEmail,
+          to: owner.email,
+          subject: `Weekly summary for ${owner.tenant_name}`,
+          html: `<div style="font-family:sans-serif;max-width:500px;margin:auto">
+            <h2 style="color:#14213D">Hi ${owner.name},</h2>
+            <p>Here's your weekly summary for <strong>${owner.tenant_name}</strong>:</p>
+            <ul>
+              <li>Payments collected: <strong>${s.payments}</strong></li>
+              <li>Total collected: <strong>\u20A6${Number(s.collected || 0).toLocaleString('en-NG')}</strong></li>
+              <li>Active students: <strong>${s.students}</strong></li>
+            </ul>
+            <p style="color:#5B5B54;margin-top:20px;font-size:12px">Log in to Ledgerly for full details.</p>
+          </div>`,
+        });
+      } catch (emailError) {
+        logger.error({ err: emailError.message, email: owner.email, msg: 'Weekly summary email failed' });
+      }
+    }
+    logger.info({ email: owner.email, msg: 'Weekly summary queued (notification + email)' });
     sent++;
   }
   res.json({ ok: true, sent });
@@ -78,4 +115,31 @@ async function cleanupTokens(req, res) {
   res.json({ ok: true, deleted: result.rowCount });
 }
 
-module.exports = { requireCronSecret, weeklySummary, checkSubscriptions, cleanupTokens };
+// Process data deletion requests past their 30-day grace period.
+// Anonymises the tenant's data (soft-delete approach — keeps the tenant row
+// but scrubs all PII). This satisfies NDPR's right-to-erasure while preserving
+// the tenant's billing/audit history for the platform admin.
+async function processDeletions(req, res) {
+  // Find deletion requests past their grace period that are still pending
+  const { rows: due } = await db.query(
+    `SELECT id, tenant_id FROM data_requests
+     WHERE type = 'deletion' AND status = 'pending'
+       AND scheduled_for IS NOT NULL AND scheduled_for <= now()`
+  );
+  let processed = 0;
+  for (const item of due) {
+    // Anonymise students (blank out names, admission_no, guardian_contact)
+    await db.query(`UPDATE students SET name = '[Deleted]', class = '', admission_no = '', guardian_contact = '', status = 'archived' WHERE tenant_id = $1`, [item.tenant_id]);
+    // Anonymise users (blank out names, emails — keep unique constraint satisfied by suffixing with the user id)
+    await db.query(`UPDATE users SET name = '[Deleted]', email = '[deleted]_' || id || '@deleted.local', status = 'disabled' WHERE tenant_id = $1`, [item.tenant_id]);
+    // Revoke all refresh tokens
+    await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id IN (SELECT id FROM users WHERE tenant_id = $1)`, [item.tenant_id]);
+    // Mark the request as completed
+    await db.query(`UPDATE data_requests SET status = 'completed', processed_at = now() WHERE id = $1`, [item.id]);
+    processed++;
+  }
+  logger.info({ processed, msg: 'Processed data deletion requests past grace period' });
+  res.json({ ok: true, processed });
+}
+
+module.exports = { requireCronSecret, weeklySummary, checkSubscriptions, cleanupTokens, processDeletions };

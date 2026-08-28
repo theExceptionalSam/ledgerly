@@ -17,6 +17,23 @@ const logger = require('../utils/logger');
 // receipt_number) constraint is a backstop for the very first receipt of a
 // year, when no rows exist yet for FOR UPDATE to lock.)
 
+// Lazy-init: the Resend client is only constructed when an API key is present,
+// so the server boots fine in dev without an email transport configured.
+// Mirrors src/utils/otp.js — kept local to receipts so a failure in the email
+// transport can't break OTP issuance (and vice versa).
+let resend = null;
+function getResend() {
+  if (resend) return resend;
+  const { Resend } = require('resend');
+  resend = new Resend(process.env.RESEND_API_KEY);
+  return resend;
+}
+
+// Simple email-shape check used to decide whether the student's
+// guardian_contact is emailable. Mirrors the typical "looks like an email"
+// regex — intentionally permissive on the local-part and TLD length.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function buildPrefix(tenantName) {
   const year = new Date().getFullYear();
   const prefix = (tenantName || 'LED').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'LED';
@@ -51,7 +68,13 @@ async function issueReceipt(req, res) {
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.reversed) return res.status(400).json({ error: 'Cannot issue a receipt for a reversed payment' });
 
-  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [tenantId]);
+  // Load the tenant's name + branding columns. logo_path / receipt_footer
+  // are nullable; if absent, generateReceiptPdf falls back to the default
+  // header (school name only) and the default two-line footer.
+  const { rows: tenantRows } = await db.query(
+    `SELECT name, logo_path, receipt_footer FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
   const tenant = tenantRows[0];
 
   // Idempotent: if a receipt already exists for this payment, regenerate the
@@ -89,23 +112,231 @@ async function issueReceipt(req, res) {
     await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
   }
 
-  // generateReceiptPdf returns a Promise (pdfkit streams asynchronously) — await it.
-  generateReceiptPdf({
-    tenant: { name: tenant.name },
-    student: { name: payment.student_name, class: payment.student_class, admission_no: payment.admission_no },
-    feeHeadName: payment.fee_head_name || 'General',
-    payment: { amount: payment.amount, method: payment.method, paid_on: payment.paid_on },
-    receiptNumber: receipt.receipt_number,
-    termName: payment.term_name || 'N/A',
-    recordedByName: payment.recorded_by_name || 'Staff',
-  }).then((pdfBuffer) => {
+  // The receipt row is now committed (either newly-inserted above or
+  // already-existing from a prior call). The endpoint is idempotent, so if
+  // PDF generation fails the user can simply re-download later — the receipt
+  // WAS issued, the audit log is correct, only the PDF download failed.
+  try {
+    const pdfBuffer = await generateReceiptPdf({
+      tenant: { name: tenant.name },
+      student: { name: payment.student_name, class: payment.student_class, admission_no: payment.admission_no },
+      feeHeadName: payment.fee_head_name || 'General',
+      payment: { amount: payment.amount, method: payment.method, paid_on: payment.paid_on },
+      receiptNumber: receipt.receipt_number,
+      termName: payment.term_name || 'N/A',
+      recordedByName: payment.recorded_by_name || 'Staff',
+      branding: { logoPath: tenant.logo_path, footerText: tenant.receipt_footer },
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
     res.send(pdfBuffer);
-  }).catch((err) => {
+  } catch (err) {
     logger.error({ err: err.message, stack: err.stack, msg: 'PDF generation failed' });
     res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
-  });
+  }
 }
 
-module.exports = { issueReceipt };
+// List receipts for the tenant with optional filters. Tenant-scoped — the
+// tenant_id from req.user is always applied, never trusted from input.
+async function listReceipts(req, res) {
+  const { tenantId } = req.user;
+  const { studentId, from, to } = req.query;
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
+
+  // Build WHERE clauses incrementally. The tenant_id is always $1; additional
+  // filters get appended as $2, $3, ... and tracked in the params array.
+  const where = ['r.tenant_id = $1'];
+  const params = [tenantId];
+  if (studentId) {
+    params.push(studentId);
+    where.push(`p.student_id = $${params.length}`);
+  }
+  if (from) {
+    params.push(from);
+    where.push(`p.paid_on >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    where.push(`p.paid_on <= $${params.length}`);
+  }
+
+  const whereClause = where.join(' AND ');
+
+  // Total count for pagination — run in parallel with the page query.
+  const countParams = params.slice();
+  const countRes = db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM receipts r
+     JOIN payments p ON p.id = r.payment_id
+     WHERE ${whereClause}`,
+    countParams
+  );
+
+  const pageParams = params.slice();
+  pageParams.push(pageSize);
+  pageParams.push((page - 1) * pageSize);
+  const pageRes = db.query(
+    `SELECT r.id, r.receipt_number, r.issued_at,
+            p.amount, p.method, p.paid_on,
+            s.name AS student_name, s.class AS student_class,
+            fh.name AS fee_head_name,
+            u.name AS issued_by_name
+     FROM receipts r
+     JOIN payments p ON p.id = r.payment_id
+     JOIN students s ON s.id = p.student_id
+     LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+     LEFT JOIN users u ON u.id = r.issued_by
+     WHERE ${whereClause}
+     ORDER BY r.issued_at DESC
+     LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+    pageParams
+  );
+
+  const [countResult, pageResult] = await Promise.all([countRes, pageRes]);
+  const total = countResult.rows[0] ? countResult.rows[0].total : 0;
+
+  res.json({ receipts: pageResult.rows, total, page, pageSize });
+}
+
+// Email a receipt PDF to the student's guardian_contact. Only fires if the
+// contact "looks like" an email — otherwise the caller is told to update the
+// student record first. Idempotent: re-sending the same receipt is allowed.
+async function emailReceipt(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { paymentId } = req.params;
+
+  // 1. Load payment + student + tenant + receipt (same JOINs as issueReceipt).
+  const { rows: paymentRows } = await db.query(`
+    SELECT p.*, s.name AS student_name, s.class AS student_class, s.admission_no,
+           s.guardian_contact,
+           fh.name AS fee_head_name, u.name AS recorded_by_name, t.name AS term_name
+    FROM payments p
+    JOIN students s ON s.id = p.student_id
+    LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+    LEFT JOIN users u ON u.id = p.recorded_by
+    LEFT JOIN terms t ON t.id = p.term_id
+    WHERE p.id = $1 AND p.tenant_id = $2
+  `, [paymentId, tenantId]);
+  const payment = paymentRows[0];
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+  if (payment.reversed) return res.status(400).json({ error: 'Cannot email a receipt for a reversed payment' });
+
+  const { rows: tenantRows } = await db.query(
+    `SELECT name, logo_path, receipt_footer FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  const tenant = tenantRows[0];
+
+  const { rows: receiptRows } = await db.query(
+    `SELECT * FROM receipts WHERE payment_id = $1 AND tenant_id = $2`,
+    [paymentId, tenantId]
+  );
+  const receipt = receiptRows[0];
+
+  // 2. A receipt must already exist — this endpoint emails, it does not issue.
+  if (!receipt) {
+    return res.status(400).json({ error: 'No receipt has been issued for this payment yet. Issue one first.' });
+  }
+
+  // 3. Validate that guardian_contact looks like an email. If not, ask the
+  // caller to update the student record — there's no ad-hoc "send to this
+  // address" override on purpose (it would let a bursar exfiltrate any
+  // receipt to an arbitrary mailbox).
+  const guardianContact = (payment.guardian_contact || '').trim();
+  if (!EMAIL_RE.test(guardianContact)) {
+    return res.status(400).json({ error: "Guardian contact is not an email address. Update the student's guardian contact to email a receipt." });
+  }
+
+  // 4. Email transport must be configured. If not, tell the caller to
+  // download the PDF directly instead of failing silently.
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({ error: 'Email sending is not configured. Download the receipt instead.' });
+  }
+
+  // 5. Generate the PDF. Failures here bubble up to the global error handler
+  // as a 500 — we haven't sent the email yet, so no half-sent state.
+  let pdfBuffer;
+  try {
+    pdfBuffer = await generateReceiptPdf({
+      tenant: { name: tenant.name },
+      student: { name: payment.student_name, class: payment.student_class, admission_no: payment.admission_no },
+      feeHeadName: payment.fee_head_name || 'General',
+      payment: { amount: payment.amount, method: payment.method, paid_on: payment.paid_on },
+      receiptNumber: receipt.receipt_number,
+      termName: payment.term_name || 'N/A',
+      recordedByName: payment.recorded_by_name || 'Staff',
+      branding: { logoPath: tenant.logo_path, footerText: tenant.receipt_footer },
+    });
+  } catch (err) {
+    logger.error({ err: err.message, stack: err.stack, msg: 'Receipt PDF generation failed for email' });
+    return res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
+  }
+
+  // 6. Send via Resend. The from address falls back to Resend's shared test
+  // address (only works for sending to the account owner's own email on the
+  // free plan) — production deploys should set RESEND_FROM_EMAIL to a
+  // verified-domain address.
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Ledgerly <onboarding@resend.dev>';
+  const amountFmt = `₦${Number(payment.amount || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#14213D">
+      <h2 style="margin-bottom:4px">${escapeHtml(tenant.name)}</h2>
+      <p style="margin-top:0;color:#5B5B54">Receipt <strong>${escapeHtml(receipt.receipt_number)}</strong></p>
+      <p style="color:#5B5B54">Hello,</p>
+      <p style="color:#5B5B54">
+        A payment receipt from <strong>${escapeHtml(tenant.name)}</strong> is attached to this email.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;color:#5B5B54">
+        <tr><td style="padding:6px 0;border-bottom:1px solid #E4E3DD">Student</td><td style="padding:6px 0;border-bottom:1px solid #E4E3DD;text-align:right;color:#14213D;font-weight:bold">${escapeHtml(payment.student_name)}</td></tr>
+        <tr><td style="padding:6px 0;border-bottom:1px solid #E4E3DD">Fee head</td><td style="padding:6px 0;border-bottom:1px solid #E4E3DD;text-align:right;color:#14213D">${escapeHtml(payment.fee_head_name || 'General')}</td></tr>
+        <tr><td style="padding:6px 0;border-bottom:1px solid #E4E3DD">Date paid</td><td style="padding:6px 0;border-bottom:1px solid #E4E3DD;text-align:right;color:#14213D">${escapeHtml(payment.paid_on || '')}</td></tr>
+        <tr><td style="padding:6px 0;border-bottom:1px solid #E4E3DD">Amount</td><td style="padding:6px 0;border-bottom:1px solid #E4E3DD;text-align:right;color:#1B7A43;font-weight:bold">${escapeHtml(amountFmt)}</td></tr>
+      </table>
+      <p style="color:#5B5B54">Please find the receipt attached as a PDF.</p>
+      <p style="color:#5B5B54;font-size:12px;margin-top:32px">This is a system-generated email. Powered by Ledgerly.</p>
+    </div>
+  `;
+
+  try {
+    await getResend().emails.send({
+      from: fromEmail,
+      to: guardianContact,
+      subject: `Receipt ${receipt.receipt_number} from ${tenant.name}`,
+      html,
+      attachments: [{ filename: `${receipt.receipt_number}.pdf`, content: pdfBuffer }],
+    });
+  } catch (emailError) {
+    logger.error({ err: emailError.message, stack: emailError.stack, msg: 'Failed to email receipt via Resend' });
+    return res.status(502).json({ error: 'Email delivery failed: ' + emailError.message });
+  }
+
+  // 7. Audit + respond. The audit row records the recipient so a future
+  // investigation can see who the receipt was sent to (without storing the
+  // PDF body itself — that lives only in the email + the receipts endpoint).
+  await recordAudit({
+    tenantId,
+    actorUserId: userId,
+    action: 'create',
+    entityType: 'receipt',
+    entityId: receipt.id,
+    ipAddress: req.ip,
+    metadata: { paymentId, receiptNumber: receipt.receipt_number, emailedTo: guardianContact },
+  });
+
+  res.json({ ok: true, emailedTo: guardianContact });
+}
+
+// Minimal HTML escaper — used by emailReceipt to safely interpolate
+// tenant/student/free-form strings into the email HTML body.
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+module.exports = { issueReceipt, listReceipts, emailReceipt };

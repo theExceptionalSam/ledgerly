@@ -85,4 +85,95 @@ async function reversePayment(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { recordPayment, reversePayment };
+// List payments for the tenant with optional filters. Tenant-scoped — the
+// tenant_id from req.user is always applied, never trusted from input.
+// Supports filters used by the bank-reconciliation matching UI: by student,
+// fee head, term, date range, method, reversed flag, and "unmatched" (no
+// receipt) which lets the bank-recon UI show only payments that still need a
+// receipt or a bank-statement match.
+async function listPayments(req, res) {
+  const { tenantId } = req.user;
+  const { studentId, feeHeadId, termId, from, to, method, reversed, unmatched } = req.query;
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
+
+  // Build WHERE clauses incrementally. The tenant_id is always $1; additional
+  // filters get appended as $2, $3, ... and tracked in the params array.
+  // The `reversed` column is INTEGER (0/1) — coerce the query-string value to
+  // a Number so the comparison is type-consistent.
+  const where = ['p.tenant_id = $1'];
+  const params = [tenantId];
+  if (studentId) {
+    params.push(studentId);
+    where.push(`p.student_id = $${params.length}`);
+  }
+  if (feeHeadId) {
+    params.push(feeHeadId);
+    where.push(`p.fee_head_id = $${params.length}`);
+  }
+  if (termId) {
+    params.push(termId);
+    where.push(`p.term_id = $${params.length}`);
+  }
+  if (from) {
+    params.push(from);
+    where.push(`p.paid_on >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    where.push(`p.paid_on <= $${params.length}`);
+  }
+  if (method) {
+    params.push(method);
+    where.push(`p.method = $${params.length}`);
+  }
+  if (reversed !== undefined && reversed !== '' && reversed !== null) {
+    params.push(Number(reversed) === 1 ? 1 : 0);
+    where.push(`p.reversed = $${params.length}`);
+  }
+  // unmatched=true: only payments WITHOUT a receipt row. Useful for the
+  // bank-recon match UI which surfaces payments that still need a receipt or
+  // a bank-statement match.
+  if (String(unmatched).toLowerCase() === 'true') {
+    where.push(`r.id IS NULL`);
+  }
+
+  const whereClause = where.join(' AND ');
+
+  // Total count for pagination — run in parallel with the page query.
+  const countRes = db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM payments p
+     LEFT JOIN receipts r ON r.payment_id = p.id
+     WHERE ${whereClause}`,
+    params.slice()
+  );
+
+  const pageParams = params.slice();
+  pageParams.push(pageSize);
+  pageParams.push((page - 1) * pageSize);
+  const pageRes = db.query(
+    `SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.reversed, p.created_at,
+            s.name AS student_name, s.class AS student_class,
+            fh.name AS fee_head_name, t.name AS term_name,
+            u.name AS recorded_by_name,
+            r.id AS receipt_id, r.receipt_number
+     FROM payments p
+     JOIN students s ON s.id = p.student_id
+     LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+     LEFT JOIN terms t ON t.id = p.term_id
+     LEFT JOIN users u ON u.id = p.recorded_by
+     LEFT JOIN receipts r ON r.payment_id = p.id
+     WHERE ${whereClause}
+     ORDER BY p.paid_on DESC, p.created_at DESC
+     LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+    pageParams
+  );
+
+  const [countResult, pageResult] = await Promise.all([countRes, pageRes]);
+  const total = countResult.rows[0] ? countResult.rows[0].total : 0;
+
+  res.json({ payments: pageResult.rows, total, page, pageSize });
+}
+
+module.exports = { recordPayment, reversePayment, listPayments };

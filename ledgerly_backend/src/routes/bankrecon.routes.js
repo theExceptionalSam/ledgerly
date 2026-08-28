@@ -14,6 +14,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 *
 
 router.post('/upload', upload.single('file'), asyncHandler(ctrl.upload));
 
+// List all statements for the tenant — must come BEFORE the /:statementId route
+// so 'list' isn't captured as a statementId param.
+router.get('/', asyncHandler(ctrl.listStatements));
+
 router.get('/:statementId', [param('statementId').isUUID()], validate, asyncHandler(ctrl.getStatement));
 
 router.post('/:statementId/match', [

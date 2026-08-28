@@ -46,6 +46,51 @@ async function deleteEndpoint(req, res) {
   res.json({ ok: true });
 }
 
+// PATCH /webhooks/:id — toggle `active` (INTEGER 0/1) and/or edit the `events`
+// array (stored as a JSON string in the DB). Only fields present in the body are
+// updated. Useful because delete+recreate would rotate the secret, which the
+// tenant would then have to redistribute.
+async function updateEndpoint(req, res) {
+  const { id } = req.params;
+  const { active, events } = req.body;
+  if (active === undefined && events === undefined) {
+    return res.status(400).json({ error: 'Provide at least one of `active` or `events` to update' });
+  }
+
+  // Build the update dynamically — only set the fields that were provided.
+  const sets = [];
+  const params = [];
+  let idx = 1;
+  if (active !== undefined) {
+    sets.push(`active = $${idx++}`);
+    params.push(active);
+  }
+  if (events !== undefined) {
+    sets.push(`events = $${idx++}`);
+    params.push(JSON.stringify(events));
+  }
+  params.push(id, req.user.tenantId);
+  const result = await db.query(
+    `UPDATE webhook_endpoints SET ${sets.join(', ')} WHERE id = $${idx++} AND tenant_id = $${idx++}`,
+    params
+  );
+  if (result.rowCount === 0) return res.status(404).json({ error: 'Endpoint not found' });
+
+  await recordAudit({ tenantId: req.user.tenantId, actorUserId: req.user.id, action: 'update', entityType: 'webhook_endpoint', entityId: id, ipAddress: req.ip, metadata: { active, events } });
+
+  // SELECT the updated row back so the caller sees the new state. `events` is
+  // stored as a JSON string — parse it to an array for the response.
+  const { rows } = await db.query(
+    `SELECT id, url, events, active, created_at FROM webhook_endpoints WHERE id = $1 AND tenant_id = $2`,
+    [id, req.user.tenantId]
+  );
+  const updated = rows[0];
+  if (updated) {
+    updated.events = typeof updated.events === 'string' ? JSON.parse(updated.events) : updated.events;
+  }
+  res.json({ endpoint: updated });
+}
+
 // Internal helper — exported so other controllers can fire webhooks without going
 // through a route. For each endpoint matching the event, POST the payload with an
 // X-Ledgerly-Signature header (HMAC-SHA256 of the body, hex). Failures are logged
@@ -90,4 +135,4 @@ async function deliverWebhook(tenantId, event, payload) {
   }
 }
 
-module.exports = { listEndpoints, createEndpoint, deleteEndpoint, deliverWebhook };
+module.exports = { listEndpoints, createEndpoint, deleteEndpoint, deliverWebhook, updateEndpoint };

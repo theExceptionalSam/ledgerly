@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.get('/', asyncHandler(ctrl.listPlans));
 
-router.post('/', requireRole('owner', 'accountant'), [
+router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('studentId').isUUID(),
   body('feeHeadId').isUUID(),
   body('termId').isUUID(),

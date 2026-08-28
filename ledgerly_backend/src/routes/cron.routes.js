@@ -10,5 +10,6 @@ router.use(ctrl.requireCronSecret);
 router.post('/weekly-summary', asyncHandler(ctrl.weeklySummary));
 router.post('/check-subscriptions', asyncHandler(ctrl.checkSubscriptions));
 router.post('/cleanup-tokens', asyncHandler(ctrl.cleanupTokens));
+router.post('/process-deletions', asyncHandler(ctrl.processDeletions));
 
 module.exports = router;

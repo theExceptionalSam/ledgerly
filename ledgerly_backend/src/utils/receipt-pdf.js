@@ -25,6 +25,7 @@
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const path = require('path');
 
 // ---- Brand palette ----------------------------------------------------------
 const COLORS = {
@@ -195,6 +196,12 @@ function capitalizeMethod(method) {
  * @param {string} opts.receiptNumber           e.g. "LHA-2026-00042".
  * @param {string} opts.termName                e.g. "First Term".
  * @param {string} opts.recordedByName          Staff who recorded the payment.
+ * @param {{logoPath?:string, footerText?:string}} [opts.branding]
+ *   Optional tenant branding. `logoPath` is resolved relative to the backend
+ *   root (src/utils → ../..); if the file exists and is a supported image
+ *   format it is rendered in the header band. `footerText` is rendered as an
+ *   extra centered line in the footer area (between the disclaimer and the
+ *   "Powered by Ledgerly" SaaS branding line).
  * @returns {Promise<Buffer>}
  */
 function generateReceiptPdf({
@@ -205,6 +212,7 @@ function generateReceiptPdf({
   receiptNumber,
   termName,
   recordedByName,
+  branding,
 }) {
   return new Promise((resolve, reject) => {
     try {
@@ -229,26 +237,63 @@ function generateReceiptPdf({
       const paidOn = (payment && payment.paid_on) || '';
       const method = (payment && payment.method) || '';
 
+      // ---- Resolve tenant branding (logo + custom footer text) ------------
+      // The logo path is stored on the tenant row (e.g. "/data/logos/abc.png")
+      // and is resolved relative to the backend root (src/utils → ../..).
+      // If the file doesn't exist or isn't a supported image format, the logo
+      // is silently skipped — the receipt still renders with the school name
+      // text at the left margin.
+      const logoPath = branding && branding.logoPath
+        ? path.join(__dirname, '../..', branding.logoPath)
+        : null;
+      const supportedLogoExt = /\.(png|jpg|jpeg|gif)$/i;
+      const hasLogo = !!(logoPath && supportedLogoExt.test(logoPath) && fs.existsSync(logoPath));
+      const customFooterText = branding && branding.footerText
+        ? String(branding.footerText).trim()
+        : '';
+
       // =====================================================================
       // 1. HEADER BAND
       // =====================================================================
       doc.rect(0, 0, PAGE_WIDTH, 80).fill(COLORS.navy);
 
-      // School name (top-left) — Times-Bold 18pt white. Constrain width so a
-      // long school name wraps before colliding with the receipt number.
+      // Logo (top-left, inside the navy header band). Max 50px tall / 120px
+      // wide, anchored at (MARGIN, 15) so it sits inside the band with a
+      // comfortable top inset. The school name text is shifted right to
+      // avoid overlapping the logo.
+      const logoMaxH = 50;
+      const logoMaxW = 120;
+      if (hasLogo) {
+        try {
+          // pdfkit's image() accepts a fit option that preserves aspect
+          // ratio and never exceeds the given box. We pin the top-left at
+          // (MARGIN, 15); fit() scales within the box and leaves the image
+          // at the top-left of that box.
+          doc.image(logoPath, MARGIN, 15, { fit: [logoMaxW, logoMaxH] });
+        } catch {
+          // Malformed image file — skip silently rather than failing the
+          // whole PDF generation. The school name text will still render.
+        }
+      }
+
+      // School name (top-left) — Times-Bold 18pt white. When a logo is
+      // rendered, shift the text right so it doesn't overlap the logo box.
+      // Constrain width so a long school name wraps before colliding with
+      // the receipt number.
+      const nameX = hasLogo ? MARGIN + 130 : MARGIN;
       doc.fillColor(COLORS.white)
         .font('Times-Bold')
         .fontSize(18)
-        .text(tenantName, MARGIN, 22, {
+        .text(tenantName, nameX, 22, {
           align: 'left',
-          width: CONTENT_WIDTH - 200,
+          width: PAGE_WIDTH - MARGIN - nameX - 200,
         });
 
       // "OFFICIAL RECEIPT" subtitle (letter-spaced) — Helvetica 10pt white.
       doc.fillColor(COLORS.white)
         .font('Helvetica')
         .fontSize(10)
-        .text('O F F I C I A L   R E C E I P T', MARGIN, 50, {
+        .text('O F F I C I A L   R E C E I P T', nameX, 50, {
           align: 'left',
         });
 
@@ -387,6 +432,12 @@ function generateReceiptPdf({
       // =====================================================================
       // 3. FOOTER
       // =====================================================================
+      // When the tenant has a custom footer text, render it as an extra
+      // centered line BETWEEN the "system-generated receipt" disclaimer and
+      // the "Powered by Ledgerly" SaaS branding line. The three-line layout
+      // is: disclaimer (footerY+8), custom footer (footerY+20), SaaS brand
+      // (footerY+34). Without a custom footer the original two-line layout
+      // is preserved (footerY+8, footerY+22).
       const footerY = PAGE_HEIGHT - 60;
 
       // Centered horizontal rule (navy 0.5pt).
@@ -408,16 +459,40 @@ function generateReceiptPdf({
           { align: 'center', width: CONTENT_WIDTH }
         );
 
-      // "Powered by Ledgerly" branding line
-      doc.fillColor(COLORS.navy)
-        .font('Helvetica-Bold')
-        .fontSize(9)
-        .text(
-          'Powered by Ledgerly',
-          MARGIN,
-          footerY + 22,
-          { align: 'center', width: CONTENT_WIDTH }
-        );
+      // Optional custom tenant footer text — Helvetica-Oblique 9pt neutral,
+      // centered, sitting between the disclaimer and the SaaS branding line.
+      if (customFooterText) {
+        doc.fillColor(COLORS.neutral)
+          .font('Helvetica-Oblique')
+          .fontSize(9)
+          .text(customFooterText, MARGIN, footerY + 20, {
+            align: 'center',
+            width: CONTENT_WIDTH,
+          });
+
+        // "Powered by Ledgerly" branding line — shifted down to footerY+34
+        // so all three lines fit below the rule.
+        doc.fillColor(COLORS.navy)
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text(
+            'Powered by Ledgerly',
+            MARGIN,
+            footerY + 34,
+            { align: 'center', width: CONTENT_WIDTH }
+          );
+      } else {
+        // "Powered by Ledgerly" branding line — original two-line layout.
+        doc.fillColor(COLORS.navy)
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text(
+            'Powered by Ledgerly',
+            MARGIN,
+            footerY + 22,
+            { align: 'center', width: CONTENT_WIDTH }
+          );
+      }
 
       doc.end();
     } catch (err) {
