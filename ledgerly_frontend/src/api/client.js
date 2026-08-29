@@ -131,15 +131,22 @@ async function openPdf(path, retry = true) {
     throw new Error(msg);
   }
   const blob = await res.blob();
+
+  // Extract filename from Content-Disposition header; fall back to a generic
+  // name. The backend sets: attachment; filename="TES-2026-00001.pdf"
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+  const filename = filenameMatch ? filenameMatch[1] : "receipt.pdf";
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.target = "_blank";
-  a.rel = "noopener";
+  a.download = filename;  // download attribute — not blocked by popup blockers
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 export const api = {

@@ -1,3 +1,12 @@
+// Polyfill globalThis.crypto for Node.js 18 (used by serialize-javascript via
+// @rollup/plugin-terser via vite-plugin-pwa's workbox-build). Node 20+ has
+// crypto globally; Node 18 needs this polyfill or the build fails with
+// "ReferenceError: crypto is not defined".
+import { webcrypto } from 'node:crypto';
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto;
+}
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
