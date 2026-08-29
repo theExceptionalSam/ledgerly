@@ -53,6 +53,21 @@ async function issueReceipt(req, res) {
   const { tenantId, id: userId } = req.user;
   const { paymentId } = req.params;
 
+  // For parent-initiated receipts, userId is null (parents aren't in the users
+  // table). The receipts.issued_by column has a FK to users + is NOT NULL, so
+  // we look up the tenant's owner to use as issued_by. This is correct
+  // semantically — the school (via its owner) is the receipt issuer, even when
+  // the download is triggered by a parent.
+  let issuedById = userId;
+  if (!issuedById) {
+    const { rows: ownerRows } = await db.query(
+      `SELECT id FROM users WHERE tenant_id = $1 AND role = 'owner' ORDER BY created_at LIMIT 1`,
+      [tenantId]
+    );
+    if (!ownerRows[0]) return res.status(500).json({ error: 'No owner found for this tenant — cannot issue receipt' });
+    issuedById = ownerRows[0].id;
+  }
+
   const { rows: paymentRows } = await db.query(`
     SELECT p.*, s.name AS student_name, s.class AS student_class, s.admission_no,
            fh.name AS fee_head_name, u.name AS recorded_by_name, t.name AS term_name
@@ -116,14 +131,14 @@ async function issueReceipt(req, res) {
       await db.query(`
         INSERT INTO receipts (id, tenant_id, payment_id, receipt_number, issued_by)
         VALUES ($1, $2, $3, $4, $5)
-      `, [receiptId, tenantId, paymentId, receiptNumber, userId], client);
+      `, [receiptId, tenantId, paymentId, receiptNumber, issuedById], client);
       return { receipt: { id: receiptId, receipt_number: receiptNumber, issued_at: new Date().toISOString() }, createdNew: true };
     });
     receipt = result.receipt;
     createdNew = result.createdNew;
 
     if (createdNew) {
-      await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
+      await recordAudit({ tenantId, actorUserId: issuedById, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
     }
   }
 

@@ -91,7 +91,12 @@ async function me(req, res) {
 // must be registered as the guardian for the student they're trying to link.
 async function linkChild(req, res) {
   const { studentId, admissionNo } = req.body;
-  const { tenantId, id: parentId, phone } = req.parent;
+  const { tenantId, id: parentId } = req.parent;
+
+  // Look up the parent's phone from the DB (requireParent only sets id + tenantId).
+  const { rows: parentRows } = await db.query(`SELECT phone FROM parents WHERE id = $1`, [parentId]);
+  const parentPhone = parentRows[0]?.phone;
+  if (!parentPhone) return res.status(404).json({ error: 'Parent account not found' });
 
   let lookupField, lookupValue;
   if (studentId) {
@@ -110,7 +115,7 @@ async function linkChild(req, res) {
   );
   const student = studentRows[0];
   if (!student) return res.status(404).json({ error: 'Student not found. Check the admission number and try again.' });
-  if (!student.guardian_contact || student.guardian_contact.replace(/\s+/g, '') !== phone.replace(/\s+/g, '')) {
+  if (!student.guardian_contact || student.guardian_contact.replace(/\s+/g, '') !== parentPhone.replace(/\s+/g, '')) {
     return res.status(403).json({ error: 'This phone number is not registered as a guardian for this student. Contact the school to update your child\'s guardian contact.' });
   }
 
@@ -186,8 +191,10 @@ async function downloadReceipt(req, res) {
 
   // Delegate to the existing issueReceipt controller. It expects req.user
   // (staff auth), so we mock it with the parent's tenant context.
+  // actorUserId is set to null because the parent isn't in the users table —
+  // issueReceipt's recordAudit call accepts null actorUserId.
   const receiptsCtrl = require('./receipts.controller');
-  req.user = { tenantId, id: parentId, role: 'parent' };
+  req.user = { tenantId, id: null, role: 'parent' };
   return receiptsCtrl.issueReceipt(req, res);
 }
 
