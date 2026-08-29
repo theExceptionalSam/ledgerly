@@ -115,12 +115,21 @@ async function issueReceipt(req, res) {
       if (existingRows[0]) return { receipt: existingRows[0], createdNew: false };
 
       // Lock the tenant's receipt rows for the current year to serialize
-      // concurrent inserts. The second concurrent transaction blocks here
-      // until the first commits; it then sees the new MAX and increments
-      // from there instead of racing on a stale counter.
+      // concurrent inserts. We can't use FOR UPDATE with MAX() (Postgres
+      // doesn't allow FOR UPDATE with aggregate functions), so we lock the
+      // underlying rows first with a plain SELECT ... FOR UPDATE, then compute
+      // the MAX in a separate query. Two concurrent transactions serialize:
+      // the second blocks on the FOR UPDATE until the first commits, then sees
+      // the new MAX and increments from there.
       const { prefix, year, pattern } = buildPrefix(tenant.name);
+      // Lock the rows (returns 0 rows on the first receipt of the year — that's
+      // fine, the UNIQUE constraint backstops that race).
+      await db.query(
+        `SELECT id FROM receipts WHERE tenant_id = $1 AND receipt_number LIKE $2 FOR UPDATE`,
+        [tenantId, pattern], client
+      );
       const { rows: maxRows } = await db.query(
-        `SELECT COALESCE(MAX(receipt_number), '') AS max_no FROM receipts WHERE tenant_id = $1 AND receipt_number LIKE $2 FOR UPDATE`,
+        `SELECT COALESCE(MAX(receipt_number), '') AS max_no FROM receipts WHERE tenant_id = $1 AND receipt_number LIKE $2`,
         [tenantId, pattern], client
       );
       const maxNo = maxRows[0].max_no;
