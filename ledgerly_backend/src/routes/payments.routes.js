@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { body, param, query } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireFeature } = require('../middleware/featureFlag');
 const ctrl = require('../controllers/payments.controller');
 const receiptsCtrl = require('../controllers/receipts.controller');
 
@@ -24,6 +25,37 @@ router.get('/', [
   query('pageSize').optional().isInt({ min: 1, max: 200 }),
 ], validate, asyncHandler(ctrl.listPayments));
 
+/**
+ * @swagger
+ * /payments:
+ *   post:
+ *     summary: Record a new payment for a student
+ *     description: Idempotent (use `idempotencyKey` to prevent double-submission). Creates the payment, links it to a fee assignment, and issues a receipt atomically.
+ *     tags: [Payments]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [studentId, amount, paidOn, feeHeadId]
+ *             properties:
+ *               studentId:      { type: string, format: uuid }
+ *               amount:         { type: number, exclusiveMinimum: 0 }
+ *               method:         { type: string, enum: [cash, bank_transfer, pos, cheque, online] }
+ *               note:           { type: string, maxLength: 300 }
+ *               paidOn:         { type: string, format: date-time }
+ *               idempotencyKey: { type: string, maxLength: 200 }
+ *               feeHeadId:      { type: string, format: uuid }
+ *               termId:         { type: string, format: uuid }
+ *     responses:
+ *       201: { description: Payment recorded — returns the payment + receipt }
+ *       403: { description: Forbidden — role not allowed (owner/bursar/accountant only) }
+ *       404: { description: Student / fee head / term not found }
+ *       409: { description: Idempotency conflict }
+ *       422: { description: Validation error }
+ */
 router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('studentId').isUUID(),
   body('amount').isFloat({ gt: 0 }),
@@ -33,7 +65,7 @@ router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('idempotencyKey').optional().isLength({ max: 200 }),
   body('feeHeadId').isUUID(),
   body('termId').optional().isUUID(),
-], validate, asyncHandler(ctrl.recordPayment));
+], validate, requireFeature('payments'), asyncHandler(ctrl.recordPayment));
 
 router.post('/:id/reverse', requireRole('owner', 'accountant'), [
   param('id').isUUID(),

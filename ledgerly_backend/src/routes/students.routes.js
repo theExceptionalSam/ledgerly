@@ -19,6 +19,32 @@ const upload = multer({
 const router = Router();
 router.use(requireAuth);
 
+/**
+ * @swagger
+ * /students:
+ *   get:
+ *     summary: List students for the current tenant
+ *     tags: [Students]
+ *     parameters:
+ *       - { in: query, name: page,       schema: { type: integer, minimum: 1 } }
+ *       - { in: query, name: pageSize,   schema: { type: integer, minimum: 1, maximum: 200 } }
+ *       - { in: query, name: search,     schema: { type: string } }
+ *       - { in: query, name: status,     schema: { type: string, enum: [archived] } }
+ *       - { in: query, name: termId,     schema: { type: string, format: uuid } }
+ *     responses:
+ *       200:
+ *         description: Paginated list of students with expected/paid/outstanding per term
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:     { type: array, items: { type: object } }
+ *                 total:    { type: integer }
+ *                 page:     { type: integer }
+ *                 pageSize: { type: integer }
+ *       401: { description: Unauthorized }
+ */
 router.get('/', [
   query('page').optional().isInt({ min: 1 }),
   query('pageSize').optional().isInt({ min: 1, max: 200 }),

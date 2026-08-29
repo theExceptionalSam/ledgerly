@@ -2,10 +2,11 @@ const { Router } = require('express');
 const { body, param } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireFeature } = require('../middleware/featureFlag');
 const ctrl = require('../controllers/webhooks.controller');
 
 const router = Router();
-router.use(requireAuth, requireRole('owner'));
+router.use(requireAuth, requireRole('owner'), requireFeature('webhooks'));
 
 router.get('/', asyncHandler(ctrl.listEndpoints));
 router.post('/', [

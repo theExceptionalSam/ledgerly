@@ -115,6 +115,19 @@ async function cleanupTokens(req, res) {
   res.json({ ok: true, deleted: result.rowCount });
 }
 
+// Delete audit log entries past their retention period. The retention_expires_at
+// column (TEXT, set by the platform admin or defaulted to 7 years for financial
+// records per Nigerian tax law) is cast to timestamptz for the comparison. NULL
+// and empty-string values are skipped — those rows have no expiry and are kept
+// indefinitely. Run daily.
+async function cleanupAuditLogs(req, res) {
+  const result = await db.query(
+    `DELETE FROM audit_logs WHERE retention_expires_at IS NOT NULL AND retention_expires_at != '' AND retention_expires_at::timestamptz < now()`
+  );
+  logger.info({ deleted: result.rowCount, msg: 'Cleaned up expired audit log entries' });
+  res.json({ ok: true, deleted: result.rowCount });
+}
+
 // Process data deletion requests past their 30-day grace period.
 // Anonymises the tenant's data (soft-delete approach — keeps the tenant row
 // but scrubs all PII). This satisfies NDPR's right-to-erasure while preserving
@@ -142,4 +155,4 @@ async function processDeletions(req, res) {
   res.json({ ok: true, processed });
 }
 
-module.exports = { requireCronSecret, weeklySummary, checkSubscriptions, cleanupTokens, processDeletions };
+module.exports = { requireCronSecret, weeklySummary, checkSubscriptions, cleanupTokens, cleanupAuditLogs, processDeletions };

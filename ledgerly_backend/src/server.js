@@ -3,9 +3,10 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 
-const { corsMiddleware, securityHeaders, apiLimiter } = require('./middleware/security');
+const { corsMiddleware, securityHeaders, apiLimiter, tenantRateLimiter } = require('./middleware/security');
 const { errorHandler } = require('./middleware/validate');
 const { requirePasswordNotForced } = require('./middleware/auth');
+const { specs, swaggerUi } = require('./utils/swagger');
 const db = require('./db');
 const logger = require('./utils/logger');
 
@@ -97,6 +98,13 @@ app.use('/api/v1/cron', cronRoutes); // FIXED: was '/api/v1' which intercepted A
 
 app.use(requirePasswordNotForced);
 
+// Per-tenant rate limiter — runs AFTER requirePasswordNotForced but BEFORE the
+// authenticated route handlers, so it can read req.user (set by requireAuth on
+// each individual route). Falls back to free-tier + IP keying for unauthenticated
+// requests (req.user is undefined → keyGenerator returns req.ip, max returns
+// PLAN_LIMITS.free). See src/middleware/security.js for plan limits.
+app.use('/api/v1', tenantRateLimiter);
+
 // --- Authenticated routes (after requirePasswordNotForced) ---
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -126,6 +134,12 @@ app.use('/api/v1/webhooks', webhooksRoutes);
 app.use('/api/v1/data-requests', datarequestsRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/receipts', receiptsRoutes);
+
+// Swagger UI — API documentation. Mounted after all routes so it doesn't
+// shadow any real /api/docs endpoint, and before the 404 handler so the UI
+// itself responds 200 (instead of falling through to "Not found").
+// No auth — the spec contains no secrets (just request/response shapes).
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, { explorer: true }));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
