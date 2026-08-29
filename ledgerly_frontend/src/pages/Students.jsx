@@ -152,9 +152,16 @@ export default function Students() {
   };
 
   const addStudent = async (fields) => {
-    await api.post("/students", fields);
-    setShowAdd(false);
-    load();
+    try {
+      const res = await api.post("/students", fields);
+      if (res.feesSynced > 0) {
+        alert(`Student added. ${res.feesSynced} fee assignment${res.feesSynced === 1 ? "" : "s"} auto-synced from other ${fields.class} students.`);
+      }
+      setShowAdd(false);
+      load();
+    } catch (e) {
+      throw e;
+    }
   };
 
   const editStudent = async (id, fields) => {
@@ -667,6 +674,9 @@ function UploadModal({ onClose, onDone }) {
       {result ? (
         <div>
           <div className="finance-row"><span>Students imported</span><span style={{ color: "#1B7A43", fontWeight: 700 }}>{result.imported}</span></div>
+          {result.feesSynced > 0 && (
+            <div className="finance-row"><span>Fee assignments auto-synced</span><span style={{ color: "#1B7A43", fontWeight: 700 }}>{result.feesSynced}</span></div>
+          )}
           {result.failed.length > 0 && (
             <div className="payment-history">
               <div className="payment-history-title">Skipped rows</div>

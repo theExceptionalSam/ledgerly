@@ -2,10 +2,15 @@ const { randomUUID } = require('crypto');
 const XLSX = require('xlsx');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
+const { autoSyncClassFees } = require('./students.controller');
 
 // Bulk student import from an Excel (.xlsx/.xls) or CSV file.
 // Expected headers (first row): Name | Class | Admission No | Parent Contact
-// (Fee Amount is no longer imported — fee heads are assigned per student after creation.)
+//
+// After the bulk INSERT, auto-syncs fees: for each new student, replicates the
+// fee assignments that other active students in the same class already have for
+// the current term. So if you've already set up fees for "JSS 1" students, every
+// new "JSS 1" student in this upload automatically gets the same fees.
 //
 // Performance: the upload is committed as a SINGLE bulk INSERT with N value tuples,
 // rather than one INSERT per row. This caps the round-trips to the DB at 1 regardless
@@ -54,6 +59,7 @@ async function bulkUpload(req, res) {
   }
 
   const inserted = [];
+  const insertedWithClass = []; // [{ id, class }] for auto-sync
   const failed = [];
   const limit = Math.min(rows.length - 1, 1000);
 
@@ -77,6 +83,7 @@ async function bulkUpload(req, res) {
     const id = randomUUID();
     valueTuples.push(id);
     inserted.push(id);
+    insertedWithClass.push({ id, klass: klass.slice(0, 60) });
     params.push(
       id,
       tenantId,
@@ -104,10 +111,24 @@ async function bulkUpload(req, res) {
     await db.query(sql, params);
   }
 
-  if (inserted.length > 0) {
-    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student_bulk', ipAddress: req.ip, metadata: { imported: inserted.length, failed: failed.length } });
+  // Pass 3: auto-sync fees for each new student. Replicates the fee assignments
+  // that other active students in the same class already have for the current
+  // term. Runs after the INSERT so the students exist in the DB. Errors here
+  // are non-fatal — the students are already inserted; we just log and continue.
+  let feesSynced = 0;
+  for (const { id, klass } of insertedWithClass) {
+    try {
+      feesSynced += await autoSyncClassFees(tenantId, id, klass);
+    } catch (e) {
+      // Non-fatal — student is already inserted, just couldn't sync fees.
+      console.error('[bulkUpload] autoSyncClassFees failed for', id, ':', e.message);
+    }
   }
-  res.status(201).json({ imported: inserted.length, failed });
+
+  if (inserted.length > 0) {
+    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student_bulk', ipAddress: req.ip, metadata: { imported: inserted.length, failed: failed.length, feesAutoSynced: feesSynced } });
+  }
+  res.status(201).json({ imported: inserted.length, failed, feesSynced });
 }
 
 // Generates a one-row example workbook users can fill in and re-upload.

@@ -19,6 +19,58 @@ async function resolveTermId(tenantId, termId) {
   return current ? current.id : null;
 }
 
+// Auto-sync fees: when a new student is added to a class, replicate the fee
+// assignments that other active students in the same class already have for
+// the current term. This means once you've set up fees for one student in a
+// class (via bulk-assign or individual assignment), every new student added
+// to that class automatically gets the same fees — no manual setup needed.
+//
+// Returns the number of fee assignments created (0 if the class had no
+// existing assignments or there's no current term).
+async function autoSyncClassFees(tenantId, studentId, klass) {
+  if (!klass) return 0;
+  const termId = await resolveTermId(tenantId, null);
+  if (!termId) return 0;
+
+  // Find the fee assignments that OTHER active students in the same class have
+  // for the current term. DISTINCT ON (fee_head_id) picks one row per fee head
+  // so we don't duplicate if multiple students have slightly different amounts
+  // (we take the first one — typically they're all the same since bulk-assign
+  // sets them uniformly).
+  const { rows: templates } = await db.query(
+    `SELECT DISTINCT ON (sfa.fee_head_id)
+            sfa.fee_head_id, sfa.expected_amount, sfa.discount_amount, sfa.discount_reason
+     FROM student_fee_assignments sfa
+     JOIN students s ON s.id = sfa.student_id
+     WHERE sfa.tenant_id = $1 AND sfa.term_id = $2
+       AND s.class = $3 AND s.status = 'active'
+       AND sfa.student_id != $4
+     ORDER BY sfa.fee_head_id, sfa.created_at DESC`,
+    [tenantId, termId, klass, studentId]
+  );
+
+  if (templates.length === 0) return 0;
+
+  let created = 0;
+  for (const t of templates) {
+    // Skip if this student already has an assignment for this fee head + term
+    // (e.g. if createStudent is called twice for the same student).
+    const { rows: existing } = await db.query(
+      `SELECT id FROM student_fee_assignments WHERE student_id = $1 AND fee_head_id = $2 AND term_id = $3`,
+      [studentId, t.fee_head_id, termId]
+    );
+    if (existing[0]) continue;
+
+    await db.query(
+      `INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, discount_amount, discount_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [randomUUID(), tenantId, studentId, t.fee_head_id, termId, t.expected_amount, t.discount_amount || 0, t.discount_reason || null]
+    );
+    created++;
+  }
+  return created;
+}
+
 async function listStudents(req, res) {
   const { tenantId } = req.user;
   const termId = await resolveTermId(tenantId, req.query.termId);
@@ -98,8 +150,12 @@ async function createStudent(req, res) {
     VALUES ($1, $2, $3, $4, $5, $6, $7)
   `, [id, tenantId, name, klass, admissionNo || null, guardianContact || null, userId]);
 
-  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip });
-  res.status(201).json({ id });
+  // Auto-sync fees: replicate the fee assignments that other students in the
+  // same class already have for the current term.
+  const feesSynced = await autoSyncClassFees(tenantId, id, klass);
+
+  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: feesSynced > 0 ? { feesAutoSynced: feesSynced } : undefined });
+  res.status(201).json({ id, feesSynced });
 }
 
 async function updateStudent(req, res) {
@@ -317,4 +373,4 @@ async function applyDiscount(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount };
+module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount, autoSyncClassFees };

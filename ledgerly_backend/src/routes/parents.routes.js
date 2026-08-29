@@ -24,6 +24,10 @@ router.post('/login', [
 router.use(requireParent);
 
 router.get('/me', asyncHandler(ctrl.me));
+router.post('/link-child', [
+  body('studentId').optional().isUUID(),
+  body('admissionNo').optional().trim().isLength({ min: 1, max: 60 }),
+], validate, asyncHandler(ctrl.linkChild));
 router.get('/students/:id/fees', [param('id').isUUID()], validate, asyncHandler(ctrl.studentFees));
 router.get('/students/:id/payments', [param('id').isUUID()], validate, asyncHandler(ctrl.studentPayments));
 

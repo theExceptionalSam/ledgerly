@@ -85,6 +85,46 @@ async function me(req, res) {
   res.json({ parent: { id: parent.id, phone: parent.phone, name: parent.name, email: parent.email, tenantId: parent.tenant_id, createdAt: parent.created_at }, students });
 }
 
+// Link an additional child to an already-authenticated parent's account.
+// Accepts either a studentId (UUID) or an admissionNo (looked up within the
+// tenant). Same guardian_contact match check as register — the parent's phone
+// must be registered as the guardian for the student they're trying to link.
+async function linkChild(req, res) {
+  const { studentId, admissionNo } = req.body;
+  const { tenantId, id: parentId, phone } = req.parent;
+
+  let lookupField, lookupValue;
+  if (studentId) {
+    lookupField = 'id';
+    lookupValue = studentId;
+  } else if (admissionNo) {
+    lookupField = 'admission_no';
+    lookupValue = admissionNo.trim();
+  } else {
+    return res.status(400).json({ error: 'Provide studentId or admissionNo' });
+  }
+
+  const { rows: studentRows } = await db.query(
+    `SELECT id, guardian_contact, name, admission_no FROM students WHERE ${lookupField} = $1 AND tenant_id = $2 AND status = 'active'`,
+    [lookupValue, tenantId]
+  );
+  const student = studentRows[0];
+  if (!student) return res.status(404).json({ error: 'Student not found. Check the admission number and try again.' });
+  if (!student.guardian_contact || student.guardian_contact.replace(/\s+/g, '') !== phone.replace(/\s+/g, '')) {
+    return res.status(403).json({ error: 'This phone number is not registered as a guardian for this student. Contact the school to update your child\'s guardian contact.' });
+  }
+
+  // Link (UNIQUE constraint dedupes if already linked).
+  await db.query(
+    `INSERT INTO parent_students (id, parent_id, student_id) VALUES ($1, $2, $3)
+     ON CONFLICT (parent_id, student_id) DO NOTHING`,
+    [randomUUID(), parentId, student.id]
+  );
+
+  await recordAudit({ tenantId, actorUserId: null, action: 'create', entityType: 'parent', entityId: parentId, ipAddress: req.ip, metadata: { action: 'link_child', studentId: student.id, studentName: student.name } });
+  res.json({ ok: true, studentName: student.name });
+}
+
 async function studentFees(req, res) {
   const { id: studentId } = req.params;
   // Verify this parent is linked to the student.
@@ -151,4 +191,4 @@ async function downloadReceipt(req, res) {
   return receiptsCtrl.issueReceipt(req, res);
 }
 
-module.exports = { register, login, me, studentFees, studentPayments, downloadReceipt };
+module.exports = { register, login, me, linkChild, studentFees, studentPayments, downloadReceipt };

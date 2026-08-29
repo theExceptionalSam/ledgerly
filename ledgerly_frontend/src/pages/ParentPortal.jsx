@@ -280,6 +280,7 @@ function ParentDashboard({ token, parent, onSignOut }) {
   const [expanded, setExpanded] = useState(null);
   const [tab, setTab] = useState("fees");
   const [paying, setPaying] = useState(null); // { student, fee } when initiating payment
+  const [showLinkChild, setShowLinkChild] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -379,13 +380,18 @@ function ParentDashboard({ token, parent, onSignOut }) {
         </div>
       </header>
       <main className="app-main">
-        <h1>Your children</h1>
-        <p className="page-intro">View outstanding fees and pay online. Receipts are emailed to you after each payment.</p>
+        <div className="toolbar">
+          <div>
+            <h1>Your children</h1>
+            <p className="page-intro" style={{ margin: 0 }}>View outstanding fees and pay online. Receipts are emailed to you after each payment.</p>
+          </div>
+          <button className="btn-primary" onClick={() => setShowLinkChild(true)}>+ Link another child</button>
+        </div>
         {error && <div className="form-error">{error}</div>}
         {loading && <div className="page-loading">Loading…</div>}
         {!loading && students.length === 0 && (
           <div className="empty-state">
-            No students are linked to your account yet. Ask your child's school to add your phone number to their record.
+            No students are linked to your account yet. Click "Link another child" above, or ask your child's school to add your phone number to their record.
           </div>
         )}
 
@@ -537,6 +543,82 @@ function ParentDashboard({ token, parent, onSignOut }) {
           }}
         />
       )}
+
+      {showLinkChild && (
+        <LinkChildModal
+          token={token}
+          onClose={() => setShowLinkChild(false)}
+          onLinked={() => {
+            setShowLinkChild(false);
+            load(); // refresh the student list
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LinkChildModal({ token, onClose, onLinked }) {
+  const [admissionNo, setAdmissionNo] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      // Look up the student by admission number (uses /search which is staff-auth,
+      // but we only need the student ID — we'll verify via the link-child endpoint).
+      // The backend link-child endpoint verifies guardian_contact matches the
+      // parent's phone, so this is safe even if the search returns a student
+      // the parent isn't authorized to see.
+      const trimmedNo = admissionNo.trim();
+      if (trimmedNo.length < 2) {
+        setError("Enter your child's admission number.");
+        setBusy(false);
+        return;
+      }
+
+      // Use the parent-scoped endpoint directly — the backend will look up
+      // the student by admission number within the parent's tenant.
+      const data = await parentFetch("/parents/link-child", token, {
+        method: "POST",
+        body: { admissionNo: trimmedNo },
+      });
+
+      if (data.error) throw new Error(data.error);
+      onLinked();
+    } catch (e) {
+      setError(e.message || "Could not link this child. Make sure the admission number is correct and your phone number is registered as their guardian.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Link another child</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        <p className="field-hint" style={{ marginTop: 0 }}>
+          Enter your child's admission number. Your phone number must be registered
+          as their guardian contact at the school.
+        </p>
+        <label>Admission number</label>
+        <input
+          value={admissionNo}
+          onChange={(e) => setAdmissionNo(e.target.value)}
+          placeholder="e.g. ADM/2026/001"
+          autoFocus
+        />
+        <button className="btn-primary btn-full" disabled={busy || !admissionNo.trim()} onClick={submit}>
+          {busy ? "Linking..." : "Link child"}
+        </button>
+      </div>
     </div>
   );
 }
