@@ -185,7 +185,7 @@ export default function Receipts() {
 
       {!loading && filtered.length > 0 && (
         <>
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-wrapper">
             <table className="fee-table">
               <thead>
                 <tr>

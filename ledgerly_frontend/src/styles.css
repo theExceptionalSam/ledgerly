@@ -18,6 +18,13 @@
 
 * { box-sizing: border-box; }
 
+html {
+  scroll-behavior: smooth;
+  /* On iOS, prevent the body from rubber-banding when a modal/menu scrolls to
+     its end. The `none` value also disables pull-to-refresh on Chrome Android. */
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -26,6 +33,26 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  text-rendering: optimizeLegibility;
+}
+
+/* Visible focus ring for keyboard navigation only — mouse taps don't trigger
+   :focus-visible so we don't get a persistent ring after a touch tap. */
+:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Buttons & links get a slightly tighter ring so the radius doesn't look
+   out-of-place against their existing border-radius. */
+button:focus-visible,
+.nav-link:focus-visible,
+.app-nav-mobile-link:focus-visible,
+.filter-chip:focus-visible,
+.tab-btn:focus-visible {
+  outline-offset: 2px;
 }
 
 /* Monetary values align in columns */
@@ -55,8 +82,10 @@ button { font: inherit; cursor: pointer; }
   border-radius: 8px;
   padding: 10px 18px;
   font-weight: 600;
+  transition: background-color 0.15s ease, transform 0.05s ease;
 }
 .btn-primary:hover { background: var(--navy-soft); }
+.btn-primary:active { transform: translateY(1px); }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-full { width: 100%; margin-top: 18px; }
 .btn-ghost-dark {
@@ -66,8 +95,10 @@ button { font: inherit; cursor: pointer; }
   border-radius: 8px;
   padding: 8px 16px;
   font-weight: 600;
+  transition: background-color 0.15s ease, transform 0.05s ease;
 }
 .btn-ghost-dark:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-ghost-dark:active { transform: translateY(1px); }
 .btn-ghost {
   background: transparent;
   color: var(--navy);
@@ -75,8 +106,10 @@ button { font: inherit; cursor: pointer; }
   border-radius: 8px;
   padding: 8px 14px;
   font-weight: 600;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
 }
 .btn-ghost:hover { background: #F6F6F3; border-color: var(--navy); }
+.btn-ghost:active { transform: translateY(1px); }
 .btn-danger-ghost {
   background: transparent;
   color: var(--red);
@@ -84,35 +117,216 @@ button { font: inherit; cursor: pointer; }
   border-radius: 8px;
   padding: 10px 16px;
   font-weight: 600;
+  transition: background-color 0.15s ease, transform 0.05s ease;
 }
 .btn-danger-ghost:hover { background: #FBEAE9; }
+.btn-danger-ghost:active { transform: translateY(1px); }
 
 /* ---------- App shell ---------- */
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.app-header { background: var(--navy); color: #fff; }
+/* 100dvh progressive enhancement: modern browsers use the second rule which
+   accounts for the mobile URL bar collapsing on scroll. Older browsers fall
+   back to 100vh via the first rule. */
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+/* Sticky header so the brand + nav stay visible while the user scrolls long
+   lists. z-index 40 keeps it below modals (50) and the mobile menu (45). */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--navy);
+  color: #fff;
+  /* Safe-area top inset so a device notch doesn't clip the header. Stacks
+     with the inner padding via `calc()`. */
+  padding-top: env(safe-area-inset-top);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+}
 .app-header-inner {
-  max-width: 1080px; margin: 0 auto; padding: 16px 20px;
+  max-width: 1080px; margin: 0 auto; padding: 14px 20px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
-.app-brand-block { display: flex; align-items: center; gap: 12px; }
+.app-brand-block { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .app-logo { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
-.app-brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.app-brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
 .app-brand { font-size: 22px; font-weight: 700; font-family: "Newsreader", Georgia, serif; letter-spacing: -0.01em; }
-.app-school-name { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); margin-top: 1px; }
-.app-subbrand { font-size: 12px; opacity: 0.65; }
+.app-school-name {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.app-subbrand {
+  font-size: 12px; opacity: 0.65;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .app-nav {
   max-width: 1080px; margin: 0 auto; padding: 0 20px;
   display: flex; gap: 4px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 .app-header-actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
 .nav-link {
   color: rgba(255, 255, 255, 0.75); text-decoration: none;
   padding: 10px 14px; font-weight: 600; font-size: 14px;
   border-bottom: 3px solid transparent; white-space: nowrap;
+  border-radius: 0;
+  transition: color 0.15s ease;
 }
 .nav-link:hover { color: #fff; }
 .nav-link.active { color: #fff; border-bottom-color: #fff; }
 .app-main { max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px 20px 60px; }
+
+/* Marker class — no-op at desktop widths, hidden on tablet/mobile via the
+   ≤1024px media query below. Apply to any element that should disappear when
+   the hamburger takes over (desktop nav, header Change password / Log out). */
+.app-desktop-only { }
+
+/* ---------- Hamburger button (mobile / tablet only) ---------- */
+.hamburger {
+  display: none; /* hidden on desktop, shown via the ≤1024px media query */
+  width: 44px; height: 44px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  padding: 0;
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.hamburger:hover { background: rgba(255, 255, 255, 0.12); }
+/* Three stacked lines — animated into an X when .is-open is applied.
+   Using transform on the middle line + the outer lines avoids needing an
+   SVG icon and keeps the bundle tiny. */
+.hamburger-line {
+  display: block;
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 20px; height: 2px;
+  background: #fff;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  transition: transform 0.2s ease, opacity 0.15s ease, width 0.2s ease;
+}
+.hamburger-line:nth-child(1) { transform: translate(-50%, calc(-50% - 6px)); }
+.hamburger-line:nth-child(3) { transform: translate(-50%, calc(-50% + 6px)); }
+.hamburger.is-open .hamburger-line:nth-child(1) { transform: translate(-50%, -50%) rotate(45deg); }
+.hamburger.is-open .hamburger-line:nth-child(2) { opacity: 0; width: 0; }
+.hamburger.is-open .hamburger-line:nth-child(3) { transform: translate(-50%, -50%) rotate(-45deg); }
+
+/* ---------- Mobile slide-down nav panel ---------- */
+/* Hidden via max-height + opacity transitions for a smooth slide-down.
+   max-height: 0 hides it; .is-open sets max-height: 80vh so the panel can
+   grow to fit its content (or scroll if it overflows). */
+.app-nav-mobile {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  /* Offset by the safe-area-inset-top so the panel sits below the notch
+     on iPhone X+ devices. The header itself uses the same env() so they
+     line up. */
+  margin-top: calc(56px + env(safe-area-inset-top));
+  background: #fff;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(20, 33, 61, 0.18);
+  z-index: 45;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.25s ease, opacity 0.18s ease;
+  /* The panel itself never gets pointer events when closed — prevents the
+     invisible closed panel from blocking taps on the page beneath. */
+  pointer-events: none;
+}
+.app-nav-mobile.is-open {
+  max-height: calc(100vh - 56px - env(safe-area-inset-top));
+  max-height: calc(100dvh - 56px - env(safe-area-inset-top));
+  opacity: 1;
+  pointer-events: auto;
+}
+.app-nav-mobile-scroll {
+  max-height: calc(100vh - 56px - env(safe-area-inset-top));
+  max-height: calc(100dvh - 56px - env(safe-area-inset-top));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 0 calc(16px + env(safe-area-inset-bottom));
+}
+.app-nav-mobile-group { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.app-nav-mobile-group:last-child { border-bottom: none; }
+.app-nav-mobile-group-title {
+  padding: 10px 20px 4px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+.app-nav-mobile-link {
+  display: block;
+  padding: 12px 20px;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600; font-size: 15px;
+  border-left: 3px solid transparent;
+  transition: background-color 0.12s ease;
+}
+.app-nav-mobile-link:hover { background: #F6F6F3; }
+.app-nav-mobile-link.active {
+  color: var(--navy);
+  background: #F0F4FA;
+  border-left-color: var(--navy);
+}
+.app-nav-mobile-actions {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px 6px;
+}
+.app-nav-mobile-actions .btn-ghost,
+.app-nav-mobile-actions .btn-danger-ghost {
+  width: 100%;
+  min-height: 44px;
+  text-align: center;
+}
+
+/* Invisible full-screen backdrop behind the mobile menu. Closes the panel
+   when the user taps outside it. Transparent (no dim) so the page beneath
+   is still visible — keeps the see-through feel of the slide-down panel. */
+.app-nav-mobile-backdrop {
+  position: fixed; inset: 0;
+  background: transparent;
+  z-index: 44; /* below the panel (45), above the page (40) */
+  cursor: default;
+}
+
+/* ---------- Table wrapper (horizontal scroll) ---------- */
+/* Wrap any <table className="fee-table"> in <div className="table-wrapper">
+   to give it horizontal scroll on narrow viewports. The wrapper is
+   edge-to-edge so the scrollbar sits flush against the card padding. */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Thin scrollbar styling for desktop; mobile WebKit hides scrollbars
+     automatically and shows them on scroll. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  margin: 8px 0;
+}
+.table-wrapper::-webkit-scrollbar { height: 6px; }
+.table-wrapper::-webkit-scrollbar-track { background: transparent; }
+.table-wrapper::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+.table-wrapper::-webkit-scrollbar-thumb:hover { background: var(--ink-soft); }
+/* Ensure the table fills its wrapper so column widths are consistent. */
+.table-wrapper > .fee-table { margin: 0; min-width: 100%; }
+
+/* ---------- Inline action cluster ---------- */
+/* Use this in place of <div style={{ display: "flex", gap: 8 }}> when the
+   children are buttons/selects that should stack vertically on phones.
+   Desktop: inline-flex with right alignment; mobile: column, full-width. */
+.user-actions {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;
+}
+.toolbar-actions {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
 
 /* ---------- Auth pages ---------- */
 .auth-page {
@@ -256,33 +470,50 @@ button { font: inherit; cursor: pointer; }
 
 /* ---------- Responsive ---------- */
 
-/* Tablet (640-1024px) */
+/* Tablet & wider — center modal instead of bottom sheet */
 @media (min-width: 640px) {
   .modal-overlay { align-items: center; }
   .modal-sheet { border-radius: 14px; }
 }
+
+/* ≤1024px — tablet + mobile: hamburger takes over.
+   Hide desktop nav + header action buttons (Change password / Log out).
+   Stat grid collapses to 2 columns so the dashboard still fits a portrait
+   tablet. The hamburger button is un-hidden. */
 @media (max-width: 1024px) {
+  .app-desktop-only { display: none !important; }
+  .hamburger { display: inline-flex; align-items: center; justify-content: center; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  /* stat-grid-3 stays at 3 cols on tablet — fits comfortably. Phone breakpoint
+     below collapses it to 1. */
   .stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  /* Tighten header padding so a tablet in portrait doesn't waste vertical
+     space — the brand block + hamburger + bell still need ~16px of room. */
+  .app-header-inner { padding: 12px 16px; }
+  .app-main { padding: 20px 16px 60px; }
 }
 
-/* Mobile (<640px) — phone optimization */
+/* ≤639px — phone optimization */
 @media (max-width: 639px) {
   /* Typography */
   body { font-size: 14px; }
   h1 { font-size: 20px; }
 
   /* App shell — full width, less padding */
-  .app-main { padding: 16px 12px 40px; }
-  .app-header-inner { padding: 12px 14px; flex-wrap: wrap; gap: 10px; }
+  .app-main { padding: 16px 12px calc(48px + env(safe-area-inset-bottom)); }
+  .app-header-inner { padding: 10px 12px; gap: 8px; }
   .app-brand { font-size: 18px; }
-  .app-school-name { font-size: 12px; }
-  .app-subbrand { font-size: 11px; }
+  /* Brand text truncation: cap at 55vw so a long school name doesn't push the
+     hamburger off-screen on phones. The hamburger + bell + (any remaining
+     action) need ~120px of horizontal room. */
+  .app-school-name { font-size: 12px; max-width: 55vw; }
+  .app-subbrand { font-size: 11px; max-width: 55vw; }
   .app-logo { width: 32px; height: 32px; }
-  .app-nav { padding: 0 8px; gap: 2px; -webkit-overflow-scrolling: touch; }
-  .nav-link { padding: 8px 10px; font-size: 13px; }
-  .app-header-actions { gap: 6px; flex-wrap: wrap; }
-  .app-header-actions .btn-ghost-dark { padding: 6px 10px; font-size: 12px; }
+  .app-header-actions { gap: 6px; }
+  /* Notification bell — slightly smaller on phones to leave room for the
+     hamburger. Min touch target stays at 38px (still tappable). */
+  .notif-bell-btn { width: 36px; height: 36px; font-size: 15px; }
+  .notif-bell-badge { top: -4px; right: -4px; font-size: 9px; padding: 1px 4px; }
 
   /* Stat cards — single column on phone */
   .stat-grid, .stat-grid-3 { grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px; }
@@ -290,13 +521,29 @@ button { font: inherit; cursor: pointer; }
   .stat-value { font-size: 22px; }
 
   /* Cards */
-  .card { padding: 16px; margin-bottom: 14px; }
+  .card { padding: 16px 14px; margin-bottom: 14px; }
 
   /* Toolbar — stack vertically */
   .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
   .toolbar-left { flex-direction: column; align-items: stretch; gap: 8px; }
   .search-input { max-width: 100%; }
   .class-filter { max-width: 100%; }
+
+  /* `.toolbar-actions` (replaces inline-styled action clusters in
+     Students/Finance/Users) — stack full-width on phones. */
+  .toolbar-actions { flex-direction: column; gap: 8px; }
+  .toolbar-actions .btn-primary,
+  .toolbar-actions .btn-ghost,
+  .toolbar-actions .btn-danger-ghost { width: 100%; }
+
+  /* `.user-actions` (replaces inline-styled user action cluster in Users)
+     — stack vertically with full-width controls on phones. The `!important`
+     is needed to override the inline `style={{ width: "auto" }}` on the
+     Users.jsx role <select>. */
+  .user-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .user-actions select,
+  .user-actions .btn-ghost,
+  .user-actions .btn-danger-ghost { width: 100% !important; }
 
   /* Filter chips — smaller, wrap */
   .filter-row { gap: 6px; margin-bottom: 12px; }
@@ -317,14 +564,22 @@ button { font: inherit; cursor: pointer; }
   .list-item-sub { font-size: 12px; }
   .list-item-amount { font-size: 12px; }
 
-  /* Action rows — stack buttons */
+  /* Action rows — stack buttons. The `!important` on flex is needed to
+     override the inline `style={{ flex: 1 }}` on the Record payment button
+     in Students.jsx's detail panel (otherwise the inline style keeps the
+     button flex-grown instead of stacked full-width). */
   .action-row { flex-direction: column; gap: 8px; }
-  .action-row .btn-primary, .action-row .btn-danger-ghost { width: 100%; flex: none; }
+  .action-row .btn-primary,
+  .action-row .btn-danger-ghost { width: 100%; flex: none !important; }
 
-  /* Fee table — horizontal scroll wrapper */
+  /* Fee table — smaller text/padding on phones. The horizontal-scroll
+     affordance is provided by the .table-wrapper div around the table. */
   .fee-table { font-size: 13px; }
   .fee-table th { padding: 6px 8px; font-size: 10px; }
   .fee-table td { padding: 8px; }
+  /* Table wrapper — flush to card edges so the scrollbar has room. */
+  .table-wrapper { margin: 8px -14px; }
+  .table-wrapper > .fee-table { min-width: 480px; }
 
   /* Payment line — stack select and input */
   .payment-line-row { flex-direction: column; align-items: stretch; gap: 6px; }
@@ -353,17 +608,30 @@ button { font: inherit; cursor: pointer; }
   .audit-meta { margin-left: 0; font-size: 11px; }
   .audit-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
   .audit-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .audit-toolbar-actions .btn-danger-ghost { flex: 1; min-width: 0; font-size: 13px; padding: 8px 10px; }
+  /* Two-up button row on phones — Archive / Restore + Clear old entries fit
+     side-by-side. Stacks to 100% on extra-small phones (≤379px below). */
+  .audit-toolbar-actions .btn-primary,
+  .audit-toolbar-actions .btn-danger-ghost,
+  .audit-toolbar-actions .btn-ghost { flex: 1 1 calc(50% - 4px); min-width: 0; font-size: 13px; padding: 8px 10px; }
 
   /* Bulk bar — full width */
-  .bulk-bar { flex-wrap: wrap; gap: 10px; font-size: 13px; }
-  .bulk-bar .btn-danger-ghost { flex: 1; }
+  .bulk-bar { flex-wrap: wrap; gap: 10px; font-size: 13px; padding: 10px 12px; }
+  .bulk-bar .btn-danger-ghost { flex: 1 1 100%; }
+  .bulk-bar .link-btn { flex: 0 0 auto; }
 
-  /* Modals — bottom sheet on mobile */
+  /* Pagination — wrap onto two rows so the page-info sits above the prev/next
+     buttons and each button keeps its min-width. */
+  .pagination { flex-wrap: wrap; gap: 8px; padding: 10px 0; }
+  .pagination-info { flex: 1 1 100%; text-align: center; order: -1; }
+  .pagination .btn-ghost { flex: 1; min-width: 0; }
+
+  /* Modals — bottom sheet on mobile, with safe-area bottom padding so the
+     home-indicator bar doesn't cover the save button. */
   .modal-overlay { align-items: flex-end; }
   .modal-sheet {
-    border-radius: 16px 16px 0 0; padding: 16px 16px 24px;
-    max-width: 100%; max-height: 92vh; width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+    max-width: 100%; max-height: 94vh; max-height: 94dvh; width: 100%;
   }
 
   /* Auth pages — smaller card */
@@ -384,16 +652,63 @@ button { font: inherit; cursor: pointer; }
   /* Tx rows */
   .tx-row { padding: 12px 14px; flex-wrap: wrap; }
   .tx-amount { font-size: 15px; }
+
+  /* Footer — stack brand + nav vertically on phones. */
+  .app-footer { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+  .app-footer-inner { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .app-footer-nav { gap: 12px; }
+
+  /* Notification dropdown — go almost full-width on phones (anchored to the
+     right edge of the bell so it doesn't overflow the viewport). */
+  .notif-dropdown { right: -8px; width: calc(100vw - 16px); }
+
+  /* Global search — show as a compact icon-triggered input. The input is
+     hidden by default and toggled by tapping a search icon in the header
+     (via :focus-within). Simpler approach: keep search in the mobile nav
+     panel. So we hide the header search input on phones. */
+  .global-search { display: none; }
+  .global-search-dropdown { width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+
+  /* Pricing grid — 1 column on phones */
+  .pricing-grid { grid-template-columns: 1fr; }
+  .pricing-card { padding: 20px 18px; }
+  .pricing-price { font-size: 26px; }
+
+  /* Legal pages — less padding on phones */
+  .legal-page { padding: 24px 16px 60px; }
+  .legal-header h1 { font-size: 22px; }
+  .legal-section h2 { font-size: 15px; }
+  .legal-section p, .legal-section ul { font-size: 14px; }
+
+  /* Onboarding — less padding on phones */
+  .onboarding-page { padding: 16px 12px; }
+  .onboarding-card { padding: 20px 16px 24px; }
+
+  /* Mobile nav link — slightly tighter padding for a long list */
+  .app-nav-mobile-link { padding: 11px 18px; font-size: 14.5px; }
 }
 
-/* Extra small phones (<380px) */
+/* Extra small phones (<380px) — further compaction */
 @media (max-width: 379px) {
+  body { font-size: 13.5px; }
+  h1 { font-size: 18px; }
   .app-brand { font-size: 16px; }
+  .app-school-name { font-size: 11px; max-width: 48vw; }
+  .app-subbrand { font-size: 10px; max-width: 48vw; }
   .app-logo { width: 28px; height: 28px; }
+  .app-header-inner { padding: 8px 10px; }
   .stat-value { font-size: 20px; }
-  .nav-link { padding: 6px 8px; font-size: 12px; }
   .filter-chip { padding: 5px 10px; font-size: 11px; }
   .chip-count { padding: 1px 6px; font-size: 11px; }
+  /* Buttons get a tighter padding so two side-by-side actions still fit on a
+     320px-wide screen (e.g. iPhone SE 1st gen). */
+  .btn-primary, .btn-ghost, .btn-danger-ghost { padding: 9px 12px; font-size: 13.5px; }
+  /* Audit toolbar buttons stack 100% on extra-small phones — two-up won't fit. */
+  .audit-toolbar-actions .btn-primary,
+  .audit-toolbar-actions .btn-danger-ghost,
+  .audit-toolbar-actions .btn-ghost { flex: 1 1 100%; }
+  /* Modal padding slightly tighter */
+  .modal-sheet { padding: 14px 12px calc(20px + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- v2: Term switcher ---------- */

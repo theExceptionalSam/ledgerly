@@ -57,10 +57,10 @@ export default function Users() {
                 </div>
                 <div className="list-item-sub">{u.email}</div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div className="user-actions">
                 {u.role !== "owner" && (
                   <>
-                    <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} style={{ width: "auto" }}>
+                    <select value={u.role} onChange={(e) => changeRole(u, e.target.value)}>
                       <option value="bursar">Bursar</option>
                       <option value="accountant">Accountant</option>
                       <option value="assistant">Assistant</option>

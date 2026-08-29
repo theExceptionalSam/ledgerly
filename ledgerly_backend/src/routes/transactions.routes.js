@@ -21,7 +21,19 @@ router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
     const { rows: tRows } = await db.query(`SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`, [tenantId]);
     termId = tRows[0]?.id;
   }
-  const { rows } = await db.query(`SELECT * FROM transactions WHERE tenant_id = $1 AND reversed = 0 AND term_id = $2 ORDER BY occurred_on DESC`, [tenantId, termId]);
+  // Mirror listTransactions: skip the term filter entirely when no termId is
+  // resolvable. Previously this always applied `AND term_id = $2` even when
+  // termId was undefined — `term_id = NULL` is always false in SQL, so the
+  // export silently returned an empty CSV (just the header) whenever no
+  // current term was set, even though the list endpoint returned all rows.
+  const params = [tenantId];
+  let sql = `SELECT * FROM transactions WHERE tenant_id = $1 AND reversed = 0`;
+  if (termId) {
+    params.push(termId);
+    sql += ` AND term_id = $${params.length}`;
+  }
+  sql += ` ORDER BY occurred_on DESC`;
+  const { rows } = await db.query(sql, params);
   const csv = ['Date,Type,Category,Amount,Description'];
   for (const t of rows) {
     csv.push([t.occurred_on, t.type, t.category, t.amount, t.description || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));

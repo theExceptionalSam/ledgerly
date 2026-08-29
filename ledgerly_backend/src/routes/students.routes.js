@@ -35,12 +35,21 @@ router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
     const { rows: tRows } = await db.query(`SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`, [tenantId]);
     termId = tRows[0]?.id;
   }
-  const { rows } = await db.query(`
-    SELECT s.name, s.class, s.admission_no, s.guardian_contact,
-      COALESCE((SELECT SUM(sfa.expected_amount - sfa.discount_amount) FROM student_fee_assignments sfa WHERE sfa.student_id = s.id AND sfa.term_id = $2), 0) AS expected,
-      COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0) AS paid
-    FROM students s WHERE s.tenant_id = $1 AND s.status = 'active' ORDER BY s.name
-  `, [tenantId, termId]);
+  // Mirror listStudents: when no termId is resolvable, return an empty CSV
+  // (just the header) instead of all active students with 0 expected/paid.
+  // Previously this ran the query unconditionally, so the subqueries
+  // `WHERE term_id = NULL` returned no rows and COALESCE → 0, producing a
+  // misleading export full of zero rows that didn't match the (empty) UI list.
+  let rows = [];
+  if (termId) {
+    const result = await db.query(`
+      SELECT s.name, s.class, s.admission_no, s.guardian_contact,
+        COALESCE((SELECT SUM(sfa.expected_amount - sfa.discount_amount) FROM student_fee_assignments sfa WHERE sfa.student_id = s.id AND sfa.term_id = $2), 0) AS expected,
+        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0) AS paid
+      FROM students s WHERE s.tenant_id = $1 AND s.status = 'active' ORDER BY s.name
+    `, [tenantId, termId]);
+    rows = result.rows;
+  }
   const csv = ['Name,Class,Admission No,Parent Contact,Expected,Paid,Outstanding'];
   for (const s of rows) {
     const out = Math.max(Number(s.expected) - Number(s.paid), 0);

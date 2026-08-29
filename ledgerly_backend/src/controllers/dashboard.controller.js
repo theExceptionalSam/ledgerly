@@ -31,11 +31,13 @@ async function getDashboard(req, res) {
   const studentCount = feeTotals.student_count || 0;
 
   // Collected = sum of non-reversed payments in this term.
+  // No JOIN to students: payments are never made for archived students, and even if
+  // they were, they should count toward collected. The expected/per-student counts
+  // above also include all students, so this keeps the three metrics consistent.
   const { rows: collectedRows } = await db.query(`
-    SELECT COALESCE(SUM(p.amount), 0) AS collected
-    FROM payments p
-    JOIN students s ON s.id = p.student_id
-    WHERE p.tenant_id = $1 AND p.term_id = $2 AND p.reversed = 0 AND s.status = 'active'
+    SELECT COALESCE(SUM(amount), 0) AS collected
+    FROM payments
+    WHERE tenant_id = $1 AND term_id = $2 AND reversed = 0
   `, [tenantId, termId]);
   const collected = collectedRows[0].collected;
 

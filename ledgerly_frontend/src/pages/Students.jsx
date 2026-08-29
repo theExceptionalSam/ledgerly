@@ -279,7 +279,7 @@ export default function Students() {
                 </select>
               )}
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="toolbar-actions">
               {canDelete && (
                 <button
                   className={viewArchived ? "btn-primary" : "btn-ghost"}
@@ -450,6 +450,7 @@ function FeeTable({ fees, feeHeads, isOwner, canEdit, onAssign, onDiscount, stud
     <div>
       {fees.length === 0 && <div className="empty-state" style={{ padding: "16px" }}>No fees assigned for this term yet.</div>}
       {fees.length > 0 && (
+        <div className="table-wrapper">
         <table className="fee-table">
           <thead>
             <tr><th>Fee Head</th><th className="num">Expected</th><th className="num">Discount</th><th className="num">Paid</th><th className="num">Outstanding</th>{isOwner && <th></th>}</tr>
@@ -475,6 +476,7 @@ function FeeTable({ fees, feeHeads, isOwner, canEdit, onAssign, onDiscount, stud
             </tr>
           </tbody>
         </table>
+        </div>
       )}
 
       {canEdit && unassigned.length > 0 && (

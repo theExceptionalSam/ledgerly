@@ -253,6 +253,7 @@ function SessionsSection() {
         <div className="empty-state" style={{ padding: 16 }}>No active sessions.</div>
       )}
       {!loading && sessions.length > 0 && (
+        <div className="table-wrapper">
         <table className="fee-table">
           <thead>
             <tr><th>Device</th><th>IP address</th><th>Signed in</th><th>Expires</th><th></th></tr>
@@ -278,6 +279,7 @@ function SessionsSection() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -347,6 +349,7 @@ function ApiKeysSection() {
         <div className="empty-state" style={{ padding: 16 }}>No API keys yet.</div>
       )}
       {!loading && keys.length > 0 && (
+        <div className="table-wrapper">
         <table className="fee-table">
           <thead>
             <tr><th>Name</th><th>Key</th><th>Permissions</th><th>Last used</th><th>Created</th><th></th></tr>
@@ -374,6 +377,7 @@ function ApiKeysSection() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {showCreate && (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { NavLink, useNavigate, Link } from "react-router-dom";
+import { NavLink, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ChangePasswordModal from "./ChangePasswordModal";
 import { api } from "../api/client";
@@ -8,10 +8,11 @@ import { naira } from "../utils/format";
 export default function Layout({ children }) {
   const { user, logout, schoolName } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showChangePw, setShowChangePw] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const moreRef = useRef(null);
-
 
   // Close "More" dropdown on outside click
   useEffect(() => {
@@ -22,6 +23,19 @@ export default function Layout({ children }) {
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
   }, [moreOpen]);
+
+  // Close the mobile menu whenever the route changes — so navigating via a
+  // hamburger link doesn't leave the slide-down panel open over the new page.
+  useEffect(() => { setMenuOpen(false); setMoreOpen(false); }, [location.pathname]);
+
+  // Lock body scroll when the mobile menu is open so the page behind doesn't
+  // also scroll when the user swipes inside the menu panel.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [menuOpen]);
 
   // Onboarding auto-trigger — if a freshly-logged-in school has 0 students and
   // hasn't dismissed the wizard, redirect to /onboarding. The flag persists in
@@ -48,6 +62,7 @@ export default function Layout({ children }) {
   }, [user, navigate]);
 
   const handleLogout = async () => {
+    setMenuOpen(false);
     await logout();
     navigate("/login");
   };
@@ -58,6 +73,12 @@ export default function Layout({ children }) {
   // Receipts is a core accounting page — visible to owner, accountant, bursar
   // (matches the /receipts route guard in App.jsx).
   const canViewReceipts = isOwner || user?.role === "accountant" || user?.role === "bursar";
+
+  // Close-the-menu handler passed to every NavLink/button inside the mobile
+  // panel. Tapping a link navigates (which triggers the location.pathname
+  // effect above) but we also close immediately so the panel slides away
+  // before the new page paints underneath it.
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <div className="app-shell">
@@ -75,13 +96,27 @@ export default function Layout({ children }) {
             <div className="app-header-actions">
               <GlobalSearch />
               <NotificationBell />
-              <button className="btn-ghost-dark" onClick={() => setShowChangePw(true)}>Change password</button>
-              <button className="btn-ghost-dark" onClick={handleLogout}>Log out</button>
+              <button className="btn-ghost-dark app-desktop-only" onClick={() => setShowChangePw(true)}>Change password</button>
+              <button className="btn-ghost-dark app-desktop-only" onClick={handleLogout}>Log out</button>
+              {/* Hamburger — hidden on desktop (≥1024px) via CSS. Toggles the
+                  slide-down mobile nav panel below. */}
+              <button
+                type="button"
+                className={"hamburger" + (menuOpen ? " is-open" : "")}
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-label={menuOpen ? "Close menu" : "Open menu"}
+                aria-expanded={menuOpen}
+                aria-controls="app-nav-mobile"
+              >
+                <span className="hamburger-line" />
+                <span className="hamburger-line" />
+                <span className="hamburger-line" />
+              </button>
             </div>
           )}
         </div>
         {user && (
-          <nav className="app-nav">
+          <nav className="app-nav app-desktop-only" aria-label="Primary">
             {/* Core links — always visible */}
             <NavLink to="/" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Dashboard</NavLink>
             <NavLink to="/students" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Students</NavLink>
@@ -141,18 +176,91 @@ export default function Layout({ children }) {
           </nav>
         )}
       </header>
-      <main className="app-main">
-        {false && (
-          <div className="form-error" style={{ background: "#FBF0E2", color: "#C77D22", borderColor: "#F2D9B8", marginBottom: 16 }}>
-            You must change your password before you can use Ledgerly. Click "Change password" above.
+
+      {/* Mobile / tablet slide-down nav panel — hidden on desktop (≥1024px).
+          Renders all core links + More links + Change password + Log out +
+          legal/parent-portal links as a single flat list. Closes on link
+          click via the closeMenu handler. */}
+      {user && (
+        <div className={"app-nav-mobile" + (menuOpen ? " is-open" : "")} id="app-nav-mobile">
+          <div className="app-nav-mobile-scroll">
+            <div className="app-nav-mobile-group">
+              <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Dashboard</NavLink>
+              <NavLink to="/students" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Students</NavLink>
+              <NavLink to="/finance" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Finance</NavLink>
+              {canViewReceipts && (
+                <NavLink to="/receipts" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Receipts</NavLink>
+              )}
+              <NavLink to="/fee-heads" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Fee Heads</NavLink>
+              <NavLink to="/sessions" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Terms</NavLink>
+              {isOwner && (
+                <NavLink to="/reports" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Reports</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/users" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Users</NavLink>
+              )}
+            </div>
+
+            <div className="app-nav-mobile-group">
+              <div className="app-nav-mobile-group-title">More</div>
+              {isOwnerOrAccountant && (
+                <NavLink to="/bank-reconciliation" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Bank Reconciliation</NavLink>
+              )}
+              {isOwnerOrBursar && (
+                <NavLink to="/fee-templates" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Fee Templates</NavLink>
+              )}
+              {isOwnerOrBursar && (
+                <NavLink to="/payment-plans" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Payment Plans</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/branding" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Receipt Branding</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/settings" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>School Settings</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/security" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Security & 2FA</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/webhooks" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Webhooks</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/data-requests" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Data & Privacy</NavLink>
+              )}
+              {isOwner && (
+                <NavLink to="/audit-log" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Audit Log</NavLink>
+              )}
+            </div>
+
+            <div className="app-nav-mobile-group">
+              <div className="app-nav-mobile-group-title">Legal</div>
+              <Link to="/parent" onClick={closeMenu} className="app-nav-mobile-link">Parent Portal</Link>
+              <Link to="/pricing" onClick={closeMenu} className="app-nav-mobile-link">Pricing</Link>
+              <Link to="/privacy" onClick={closeMenu} className="app-nav-mobile-link">Privacy</Link>
+              <Link to="/terms" onClick={closeMenu} className="app-nav-mobile-link">Terms</Link>
+            </div>
+
+            <div className="app-nav-mobile-actions">
+              <button className="btn-ghost" onClick={() => { setShowChangePw(true); closeMenu(); }}>Change password</button>
+              <button className="btn-danger-ghost" onClick={handleLogout}>Log out</button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
+      {/* Invisible backdrop behind the mobile menu — closes the panel when the
+          user taps outside it. Doesn't dim the page (transparent) to preserve
+          the see-through feel of the slide-down panel. */}
+      {user && menuOpen && (
+        <div className="app-nav-mobile-backdrop" onClick={closeMenu} aria-hidden="true" />
+      )}
+
+      <main className="app-main">
         {children}
       </main>
       <footer className="app-footer">
         <div className="app-footer-inner">
-          <div className="app-footer-brand">© {new Date().getFullYear()} Ledgerly · Lagos, Nigeria</div>
-          <nav className="app-footer-nav">
+          <div className="app-footer-brand">© 2026 Ledgerly · School Fee Management</div>
+          <nav className="app-footer-nav" aria-label="Legal">
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
             <Link to="/pricing">Pricing</Link>
@@ -160,12 +268,11 @@ export default function Layout({ children }) {
           </nav>
         </div>
       </footer>
-      {(showChangePw || false) && (
+      {showChangePw && (
         <ChangePasswordModal
           forced={false}
-          onClose={() => { if (!false) setShowChangePw(false); }}
+          onClose={() => setShowChangePw(false)}
           onSuccess={() => {
-            setForceChangePw(false);
             setShowChangePw(false);
             window.location.reload();
           }}

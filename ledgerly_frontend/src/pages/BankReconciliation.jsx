@@ -271,7 +271,7 @@ export default function BankReconciliation() {
             {transactions.length === 0 ? (
               <div className="empty-state">No transactions in this statement.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div className="table-wrapper">
                 <table className="fee-table">
                   <thead>
                     <tr>

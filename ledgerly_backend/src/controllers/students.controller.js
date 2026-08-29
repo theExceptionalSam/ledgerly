@@ -253,6 +253,13 @@ async function assignStudentFee(req, res) {
   if (!term) return res.status(404).json({ error: 'Term not found' });
 
   // Upsert: insert, or update expected_amount if the (student, head, term) row already exists.
+  //
+  // Race condition handling: two concurrent assignStudentFee calls for the same
+  // (student, fee_head, term) triple both pass the SELECT above and race on the
+  // INSERT. The loser fails with PostgreSQL error 23505 (unique_violation on
+  // (student_id, fee_head_id, term_id)). Instead of surfacing as a 500, we
+  // re-fetch the winner's row and UPDATE its expected_amount — same effect as
+  // the happy-path upsert above.
   const { rows: existingRows } = await db.query(`SELECT id FROM student_fee_assignments WHERE student_id = $1 AND fee_head_id = $2 AND term_id = $3`, [studentId, feeHeadId, termId]);
   const existing = existingRows[0];
   let assignmentId;
@@ -261,10 +268,26 @@ async function assignStudentFee(req, res) {
     assignmentId = existing.id;
   } else {
     assignmentId = randomUUID();
-    await db.query(`
-      INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [assignmentId, tenantId, studentId, feeHeadId, termId, expectedAmount, userId]);
+    try {
+      await db.query(`
+        INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [assignmentId, tenantId, studentId, feeHeadId, termId, expectedAmount, userId]);
+    } catch (err) {
+      if (err && err.code === '23505') {
+        // Another concurrent call won the race — re-fetch its row and UPDATE.
+        const { rows: winnerRows } = await db.query(`SELECT id FROM student_fee_assignments WHERE student_id = $1 AND fee_head_id = $2 AND term_id = $3`, [studentId, feeHeadId, termId]);
+        const winner = winnerRows[0];
+        if (winner) {
+          await db.query(`UPDATE student_fee_assignments SET expected_amount = $1 WHERE id = $2`, [expectedAmount, winner.id]);
+          assignmentId = winner.id;
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
   }
 
   await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'fee_assignment', entityId: assignmentId, ipAddress: req.ip, metadata: { studentId, feeHeadId, termId, expectedAmount } });

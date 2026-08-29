@@ -291,7 +291,7 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
           <div className="card">
             <div className="toolbar" style={{ marginBottom: 14 }}>
               <div className="card-title" style={{ margin: 0 }}>Tenant list ({filtered.length})</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="toolbar-actions">
                 <input
                   className="search-input"
                   type="search"
@@ -303,7 +303,7 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
                 <select
                   value={healthFilter}
                   onChange={(e) => setHealthFilter(e.target.value)}
-                  style={{ width: "auto", padding: "8px 12px" }}
+                  style={{ padding: "8px 12px" }}
                 >
                   <option value="all">All health</option>
                   <option value="green">🟢 Green</option>
@@ -317,6 +317,7 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
             {filtered.length === 0 ? (
               <div className="empty-state">No tenants match the current filter.</div>
             ) : (
+              <div className="table-wrapper">
               <table className="fee-table">
                 <thead>
                   <tr>
@@ -373,6 +374,7 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>
@@ -470,6 +472,7 @@ function RevenueTab({ token }) {
         {subscriptions.length === 0 ? (
           <div className="empty-state">No subscriptions yet.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -507,6 +510,7 @@ function RevenueTab({ token }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -543,6 +547,7 @@ function ErrorsTab({ token }) {
         {rows.length === 0 ? (
           <div className="empty-state">No recent errors logged.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -570,6 +575,7 @@ function ErrorsTab({ token }) {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </>
@@ -637,6 +643,7 @@ function UsageTab({ token }) {
         {rateLimits.length === 0 ? (
           <div className="empty-state">No rate-limit data yet.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -655,6 +662,7 @@ function UsageTab({ token }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -937,6 +945,7 @@ function FeatureFlagsTab({ token, tenants }) {
         {list.length === 0 ? (
           <div className="empty-state">No feature flags configured.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -964,6 +973,7 @@ function FeatureFlagsTab({ token, tenants }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </>
@@ -999,6 +1009,7 @@ function DatabaseTab({ token, health, loading, onRefresh }) {
         {tables.length === 0 ? (
           <div className="empty-state">No table size data.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -1017,6 +1028,7 @@ function DatabaseTab({ token, health, loading, onRefresh }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -1087,6 +1099,7 @@ function NpsTab({ token }) {
         {feedback.length === 0 ? (
           <div className="empty-state">No NPS feedback collected yet.</div>
         ) : (
+          <div className="table-wrapper">
           <table className="fee-table">
             <thead>
               <tr>
@@ -1119,6 +1132,7 @@ function NpsTab({ token }) {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </>

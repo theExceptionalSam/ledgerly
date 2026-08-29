@@ -429,6 +429,7 @@ function ParentDashboard({ token, parent, onSignOut }) {
                             No fees have been assigned for the current term yet. Please check back later.
                           </div>
                         ) : (
+                          <div className="table-wrapper">
                           <table className="fee-table">
                             <thead>
                               <tr>
@@ -461,6 +462,7 @@ function ParentDashboard({ token, parent, onSignOut }) {
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     )}

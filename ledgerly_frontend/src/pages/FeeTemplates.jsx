@@ -75,6 +75,7 @@ export default function FeeTemplates() {
               </div>
               {t.items && t.items.length > 0 && (
                 <div className="list-item-detail">
+                  <div className="table-wrapper">
                   <table className="fee-table">
                     <thead>
                       <tr><th>Fee head</th><th className="num">Amount</th></tr>
@@ -95,6 +96,7 @@ export default function FeeTemplates() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </div>

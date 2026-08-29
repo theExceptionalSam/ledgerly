@@ -282,6 +282,7 @@ function Step4AssignFees({ student, feeHeads, termId, onNext, onBack, onError })
         Enter the expected amount for each fee head you want to bill this term. Leave blank any that
         don't apply. You can change these any time from the student's record.
       </p>
+      <div className="table-wrapper">
       <table className="fee-table">
         <thead>
           <tr><th>Fee head</th><th className="num">Expected amount (₦)</th></tr>
@@ -303,6 +304,7 @@ function Step4AssignFees({ student, feeHeads, termId, onNext, onBack, onError })
           ))}
         </tbody>
       </table>
+      </div>
       <div className="action-row">
         <button className="btn-ghost" onClick={onBack}>← Back</button>
         <button className="btn-primary" style={{ flex: 1 }} disabled={busy} onClick={submit}>

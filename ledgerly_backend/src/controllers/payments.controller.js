@@ -52,14 +52,30 @@ async function recordPayment(req, res) {
   const id = randomUUID();
   // Insert the payment row and the audit-log row in a single transaction. If either
   // write fails, both are rolled back — no unaudited payments can ever be persisted.
-  await db.transaction(async (client) => {
-    await db.query(`
-      INSERT INTO payments (id, tenant_id, student_id, amount, method, note, paid_on, recorded_by, idempotency_key, fee_head_id, term_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    `, [id, tenantId, studentId, amount, method || 'cash', note || null, paidOn, userId, idempotencyKey || null, feeHeadId, resolvedTermId], client);
+  //
+  // Race condition handling: two concurrent recordPayment calls with the same
+  // idempotencyKey both pass the pre-check above and race on the INSERT. The
+  // loser's transaction rolls back with PostgreSQL error 23505 (unique_violation
+  // on (tenant_id, idempotency_key)). Instead of surfacing as a 500, we re-fetch
+  // the winner's payment and return it with `deduplicated: true` — same shape as
+  // the happy-path dedup above.
+  try {
+    await db.transaction(async (client) => {
+      await db.query(`
+        INSERT INTO payments (id, tenant_id, student_id, amount, method, note, paid_on, recorded_by, idempotency_key, fee_head_id, term_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `, [id, tenantId, studentId, amount, method || 'cash', note || null, paidOn, userId, idempotencyKey || null, feeHeadId, resolvedTermId], client);
 
-    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentName: student.name, feeHeadName: head.name, amount, method: method || 'cash' } }, client);
-  });
+      await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'payment', entityId: id, ipAddress: req.ip, metadata: { studentName: student.name, feeHeadName: head.name, amount, method: method || 'cash' } }, client);
+    });
+  } catch (err) {
+    if (err && err.code === '23505' && idempotencyKey) {
+      const { rows: dupeRows } = await db.query(`SELECT id FROM payments WHERE tenant_id = $1 AND idempotency_key = $2`, [tenantId, idempotencyKey]);
+      const dupe = dupeRows[0];
+      if (dupe) return res.status(200).json({ id: dupe.id, deduplicated: true });
+    }
+    throw err;
+  }
 
   res.status(201).json({ id });
 }

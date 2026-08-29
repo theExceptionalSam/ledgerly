@@ -81,12 +81,23 @@ async function issueReceipt(req, res) {
   // PDF from the existing receipt number (no duplicate row, no new number).
   const { rows: receiptRows } = await db.query(`SELECT * FROM receipts WHERE payment_id = $1 AND tenant_id = $2`, [paymentId, tenantId]);
   let receipt = receiptRows[0];
+  // Track whether THIS call actually inserted a new receipt row. We must only
+  // record an audit entry when a new receipt is created — not when an existing
+  // receipt is re-fetched (either by the outer check above or by the inner
+  // re-check inside the transaction during a concurrent call). Previously the
+  // `recordAudit` below ran whenever we entered the `if (!receipt)` block,
+  // which produced duplicate audit entries for the same receipt on re-download
+  // and on concurrent issueReceipt calls.
+  let createdNew = false;
 
   if (!receipt) {
-    receipt = await db.transaction(async (client) => {
+    // The transaction returns `{ receipt, createdNew }` so we can tell apart
+    // "this call inserted" (audit) from "this call lost the race and re-fetched
+    // a concurrent winner" (do NOT audit — the winner already did).
+    const result = await db.transaction(async (client) => {
       // Re-check inside the transaction in case of a concurrent insert.
       const { rows: existingRows } = await db.query(`SELECT * FROM receipts WHERE payment_id = $1 AND tenant_id = $2`, [paymentId, tenantId], client);
-      if (existingRows[0]) return existingRows[0];
+      if (existingRows[0]) return { receipt: existingRows[0], createdNew: false };
 
       // Lock the tenant's receipt rows for the current year to serialize
       // concurrent inserts. The second concurrent transaction blocks here
@@ -106,10 +117,14 @@ async function issueReceipt(req, res) {
         INSERT INTO receipts (id, tenant_id, payment_id, receipt_number, issued_by)
         VALUES ($1, $2, $3, $4, $5)
       `, [receiptId, tenantId, paymentId, receiptNumber, userId], client);
-      return { id: receiptId, receipt_number: receiptNumber, issued_at: new Date().toISOString() };
+      return { receipt: { id: receiptId, receipt_number: receiptNumber, issued_at: new Date().toISOString() }, createdNew: true };
     });
+    receipt = result.receipt;
+    createdNew = result.createdNew;
 
-    await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
+    if (createdNew) {
+      await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'receipt', entityId: receipt.id, ipAddress: req.ip, metadata: { paymentId, receiptNumber: receipt.receipt_number } });
+    }
   }
 
   // The receipt row is now committed (either newly-inserted above or

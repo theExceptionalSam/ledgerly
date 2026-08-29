@@ -53,8 +53,18 @@ async function listAuditLogs(req, res) {
   `, params);
 
   // Enrich metadata with JOINed data for old entries.
+  // Wrap JSON.parse in try/catch: a single corrupted metadata row would otherwise
+  // crash the entire list response with a 500. Fall back to {} so the rest of the
+  // row still renders.
   const enriched = rows.map((row) => {
-    const m = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+    let m = {};
+    if (row.metadata) {
+      try {
+        m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+      } catch {
+        m = {};
+      }
+    }
     if (row.entity_type === 'payment' && row.action === 'create') {
       if (!m.studentName && row.student_name) m.studentName = row.student_name;
       if (!m.feeHeadName && row.fee_head_name) m.feeHeadName = row.fee_head_name;
@@ -111,6 +121,7 @@ async function restoreAuditLogs(req, res) {
     [tenantId, ids]
   );
 
+  await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'audit_log', entityId: null, ipAddress: req.ip, metadata: { restored: result.rowCount, action: 'bulk_restore' } });
   res.json({ restored: result.rowCount });
 }
 

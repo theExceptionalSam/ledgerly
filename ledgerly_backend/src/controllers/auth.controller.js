@@ -22,6 +22,17 @@ const cookieOptions = {
   path: '/api/v1/auth',
   maxAge: 1000 * 60 * 60 * 24 * 30,
 };
+// Cookie options for deletion: must mirror `cookieOptions` (secure + sameSite)
+// so the browser matches the cookie to delete. Per RFC 6265 §5.3, Max-Age takes
+// precedence over Expires — so we MUST NOT include maxAge here, otherwise the
+// `Expires=epoch` Express sets on clearCookie would be ignored and the cookie
+// would persist for another 30 days.
+const clearCookieOptions = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'strict',
+  path: '/api/v1/auth',
+};
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -180,9 +191,16 @@ async function refresh(req, res) {
   // CSRF protection: only accept refresh requests from allowed origins.
   // sameSite:'none' is required for cross-site cookies, so we can't rely on
   // the browser to block CSRF — we check the Origin header instead.
+  // Use the same default as src/middleware/security.js ('http://localhost:5173')
+  // and filter out empty strings: otherwise, when CORS_ORIGINS is unset,
+  // `('' ).split(',')` produces `['']`, the `allowedOrigins[0]` truthy guard
+  // fails, and the check is skipped entirely — letting ANY origin through.
   const origin = req.headers.origin;
-  const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',');
-  if (origin && allowedOrigins.length > 0 && allowedOrigins[0] && !allowedOrigins.includes(origin)) {
+  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (origin && !allowedOrigins.includes(origin)) {
     return res.status(403).json({ error: 'Origin not permitted' });
   }
 
@@ -263,19 +281,19 @@ async function logout(req, res) {
     const hash = hashRefreshToken(raw);
     await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1`, [hash]);
   }
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+  res.clearCookie(REFRESH_COOKIE, clearCookieOptions);
   res.json({ ok: true });
 }
 
 // Revokes every session for the current user — "log out all devices"
 async function logoutAll(req, res) {
   await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [req.user.id]);
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+  res.clearCookie(REFRESH_COOKIE, clearCookieOptions);
   res.json({ ok: true });
 }
 
 async function me(req, res) {
-  const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id, twofa_enabled FROM users WHERE id = $1`, [req.user.id]);
+  const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id, twofa_enabled, email_verified FROM users WHERE id = $1`, [req.user.id]);
   const user = userRows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
@@ -283,7 +301,7 @@ async function me(req, res) {
   const { rows: termRows } = await db.query(`SELECT id, name FROM terms WHERE tenant_id = $1 AND is_current = 1`, [user.tenant_id]);
   const currentTerm = termRows[0];
   res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, twofaEnabled: !!user.twofa_enabled },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, twofaEnabled: !!user.twofa_enabled, emailVerified: !!user.email_verified },
     tenant,
     currentTerm: currentTerm || null,
   });

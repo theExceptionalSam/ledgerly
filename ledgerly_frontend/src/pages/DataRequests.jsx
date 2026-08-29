@@ -164,7 +164,7 @@ export default function DataRequests() {
         {loading && <div className="page-loading">Loading…</div>}
         {!loading && requests.length === 0 && <div className="empty-state">No data requests yet.</div>}
         {!loading && requests.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-wrapper">
             <table className="fee-table">
               <thead>
                 <tr>

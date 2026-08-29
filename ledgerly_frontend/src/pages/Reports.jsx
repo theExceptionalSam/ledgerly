@@ -97,6 +97,7 @@ export default function Reports() {
             {data.monthlyCollection.length === 0 ? (
               <div className="empty-state">No payments recorded this term.</div>
             ) : (
+              <div className="table-wrapper">
               <table className="fee-table">
                 <thead>
                   <tr>
@@ -126,6 +127,7 @@ export default function Reports() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
@@ -144,6 +146,7 @@ export default function Reports() {
             {data.defaulters.length === 0 ? (
               <div className="empty-state">No defaulters. Every billed student has paid in full.</div>
             ) : (
+              <div className="table-wrapper">
               <table className="fee-table">
                 <thead>
                   <tr>
@@ -173,6 +176,7 @@ export default function Reports() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
@@ -182,6 +186,7 @@ export default function Reports() {
             {data.fullyPaid.length === 0 ? (
               <div className="empty-state">No students have paid in full yet this term.</div>
             ) : (
+              <div className="table-wrapper">
               <table className="fee-table">
                 <thead>
                   <tr>
@@ -207,6 +212,7 @@ export default function Reports() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>

@@ -29,10 +29,22 @@ async function createUser(req, res) {
 
   const id = randomUUID();
   const passwordHash = await bcrypt.hash(password, 12);
-  await db.query(`
-    INSERT INTO users (id, tenant_id, name, email, password_hash, role, email_verified, force_change_password)
-    VALUES ($1, $2, $3, $4, $5, $6, 1, 1)
-  `, [id, tenantId, name, email.toLowerCase(), passwordHash, role]);
+  // Race condition handling: two concurrent createUser calls with the same email
+  // both pass the SELECT above and race on the INSERT. The loser fails with
+  // PostgreSQL error 23505 (unique_violation on (tenant_id, email)). Re-surface
+  // the same 409 as the happy-path dedup above so the client gets a consistent
+  // error shape regardless of which path catches the duplicate.
+  try {
+    await db.query(`
+      INSERT INTO users (id, tenant_id, name, email, password_hash, role, email_verified, force_change_password)
+      VALUES ($1, $2, $3, $4, $5, $6, 1, 1)
+    `, [id, tenantId, name, email.toLowerCase(), passwordHash, role]);
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+    throw err;
+  }
 
   await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'user', entityId: id, ipAddress: req.ip, metadata: { userName: name, role, action: 'invited' } });
   res.status(201).json({ id });

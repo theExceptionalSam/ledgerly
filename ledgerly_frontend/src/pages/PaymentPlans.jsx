@@ -299,6 +299,7 @@ function PlanDetailModal({ id, onClose }) {
             <div className="finance-row"><span>Status</span><span style={{ textTransform: "capitalize" }}>{plan.status}</span></div>
 
             <div className="card-title" style={{ marginTop: 18 }}>Installment schedule</div>
+            <div className="table-wrapper">
             <table className="fee-table">
               <thead>
                 <tr>
@@ -336,6 +337,7 @@ function PlanDetailModal({ id, onClose }) {
                 )}
               </tbody>
             </table>
+            </div>
 
             <button className="btn-primary btn-full" onClick={onClose}>Close</button>
           </>
