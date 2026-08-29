@@ -26,6 +26,7 @@ export default function Students() {
   const [totalPages, setTotalPages] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [editFor, setEditFor] = useState(null);
   const [payFor, setPayFor] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -156,6 +157,13 @@ export default function Students() {
     load();
   };
 
+  const editStudent = async (id, fields) => {
+    await api.put(`/students/${id}`, fields);
+    setEditFor(null);
+    if (expanded === id) api.get(`/students/${id}?termId=${selectedTermId}`).then(setDetail);
+    load();
+  };
+
   const assignFee = async (studentId, feeHeadId, amount) => {
     await api.post(`/students/${studentId}/fees`, { feeHeadId, termId: selectedTermId, expectedAmount: amount });
     if (expanded === studentId) api.get(`/students/${studentId}?termId=${selectedTermId}`).then(setDetail);
@@ -256,6 +264,7 @@ export default function Students() {
       {canEdit && (
         <div className="action-row">
           <button className="btn-primary" style={{ flex: 1 }} onClick={() => setPayFor(studentId)}>Record payment</button>
+          <button className="btn-ghost" onClick={() => setEditFor(studentId)}>Edit details</button>
           <button className="btn-danger-ghost" onClick={() => archive(studentId, studentName)}>Remove</button>
         </div>
       )}
@@ -420,6 +429,13 @@ export default function Students() {
 
       {showAdd && <AddStudentModal onClose={() => setShowAdd(false)} onSave={addStudent} />}
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} onDone={load} />}
+      {editFor && (
+        <EditStudentModal
+          student={students.find((s) => s.id === editFor) || (detail && detail.student ? detail.student : null)}
+          onClose={() => setEditFor(null)}
+          onSave={(fields) => editStudent(editFor, fields)}
+        />
+      )}
       {payFor && (
         <PaymentModal
           student={students.find((s) => s.id === payFor)}
@@ -588,6 +604,41 @@ function AddStudentModal({ onClose, onSave }) {
       <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
       <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
         {busy ? "Saving..." : "Add student"}
+      </button>
+    </Modal>
+  );
+}
+
+function EditStudentModal({ student, onClose, onSave }) {
+  const [name, setName] = useState(student?.name || "");
+  const [klass, setKlass] = useState(student?.class || CLASS_LIST[0]);
+  const [admissionNo, setAdmissionNo] = useState(student?.admission_no || "");
+  const [guardianContact, setGuardianContact] = useState(student?.guardian_contact || "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true); setError("");
+    try {
+      await onSave({ name, class: klass, admissionNo, guardianContact });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={"Edit " + (student?.name || "student")} onClose={onClose}>
+      {error && <div className="form-error">{error}</div>}
+      <label>Full name</label>
+      <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      <label>Class</label>
+      <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+        {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <label>Admission number (optional)</label>
+      <input value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} />
+      <label>Parent contact</label>
+      <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
+      <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
+        {busy ? "Saving..." : "Save changes"}
       </button>
     </Modal>
   );

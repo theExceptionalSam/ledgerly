@@ -6,19 +6,9 @@ import { naira } from "../utils/format";
 //
 // Lists every receipt issued in the tenant, with date-range filters and a
 // client-side student-name search. Each row links back to the receipt PDF via
-// the existing `GET /payments/:paymentId/receipt` endpoint.
-//
-// NOTE on payment_id: the backend `listReceipts` SELECT (see
-// `receipts.controller.js`) currently returns `r.id, r.receipt_number,
-// r.issued_at, p.amount, p.method, p.paid_on, student_name, student_class,
-// fee_head_name, issued_by_name` — it does NOT include `r.payment_id`. So the
-// Download PDF button below can only call `/payments/:paymentId/receipt` when
-// the row exposes `payment_id`. Until the backend adds `r.payment_id AS
-// payment_id` to that SELECT (or exposes a `/receipts/:id/pdf` endpoint), the
-// button gracefully degrades: rows without `payment_id` show a disabled button
-// with a tooltip pointing users at the student's payment history. The check is
-// written defensively so the button lights up automatically the moment the
-// backend starts returning `payment_id`.
+// the existing `GET /payments/:paymentId/receipt` endpoint. The backend
+// listReceipts SELECT includes `r.payment_id` so the download button works
+// directly from this view.
 
 const PAGE_SIZE = 50;
 
@@ -103,14 +93,7 @@ export default function Receipts() {
   const downloadPdf = async (r) => {
     const paymentId = r.payment_id;
     if (!paymentId) {
-      // Graceful degradation — see the file-level note. The backend
-      // listReceipts SELECT doesn't currently include payment_id, so we can't
-      // reach `/payments/:paymentId/receipt` from this view. Point the user at
-      // the student's payment history, where the Print receipt button has the
-      // payment_id in hand.
-      alert(
-        "This receipt's payment ID isn't exposed by the receipts list. Open the student in Students → expand their record → Payments to download the receipt PDF."
-      );
+      alert("This receipt's payment record could not be found. Open the student in Students → Payments to download the receipt PDF.");
       return;
     }
     setBusyId(r.id);
@@ -203,10 +186,6 @@ export default function Receipts() {
               </thead>
               <tbody>
                 {filtered.map((r) => {
-                  const hasPaymentId = !!r.payment_id;
-                  const tip = hasPaymentId
-                    ? "Download receipt PDF"
-                    : "Open this student in Students → Payments to download the receipt (payment_id not exposed by the receipts list).";
                   return (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 600, color: "var(--navy)" }}>{r.receipt_number || "—"}</td>
@@ -221,8 +200,8 @@ export default function Receipts() {
                       <td>
                         <button
                           className="btn-ghost"
-                          title={tip}
-                          disabled={!hasPaymentId || busyId === r.id}
+                          title="Download receipt PDF"
+                          disabled={busyId === r.id}
                           onClick={() => downloadPdf(r)}
                         >
                           {busyId === r.id ? "Opening…" : "Download PDF"}

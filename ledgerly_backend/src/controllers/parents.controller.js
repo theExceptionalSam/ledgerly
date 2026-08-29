@@ -127,4 +127,28 @@ async function studentPayments(req, res) {
   res.json({ payments: rows });
 }
 
-module.exports = { register, login, me, studentFees, studentPayments };
+// Parent-scoped receipt download. Verifies the parent is linked to the
+// student who made the payment, then delegates to the same issueReceipt
+// logic used by the staff endpoint (so the receipt number, branding, and
+// PDF layout are identical).
+async function downloadReceipt(req, res) {
+  const { paymentId } = req.params;
+  const { tenantId, id: parentId } = req.parent;
+
+  // Verify the payment belongs to a student linked to this parent.
+  const { rows: payRows } = await db.query(
+    `SELECT p.student_id FROM payments p
+     JOIN parent_students ps ON ps.student_id = p.student_id
+     WHERE p.id = $1 AND p.tenant_id = $2 AND ps.parent_id = $3 AND p.reversed = 0`,
+    [paymentId, tenantId, parentId]
+  );
+  if (!payRows[0]) return res.status(404).json({ error: 'Payment not found or not linked to your account' });
+
+  // Delegate to the existing issueReceipt controller. It expects req.user
+  // (staff auth), so we mock it with the parent's tenant context.
+  const receiptsCtrl = require('./receipts.controller');
+  req.user = { tenantId, id: parentId, role: 'parent' };
+  return receiptsCtrl.issueReceipt(req, res);
+}
+
+module.exports = { register, login, me, studentFees, studentPayments, downloadReceipt };

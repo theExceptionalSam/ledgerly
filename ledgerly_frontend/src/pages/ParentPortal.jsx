@@ -319,21 +319,33 @@ function ParentDashboard({ token, parent, onSignOut }) {
 
   const openReceipt = async (paymentId) => {
     try {
-      const res = await fetch(`${API_BASE}/payments/${paymentId}/receipt`, {
+      // Use the parent-scoped receipt endpoint (verifies parent↔student link).
+      // The staff endpoint /payments/:id/receipt rejects parent tokens.
+      const res = await fetch(`${API_BASE}/parents/payments/${paymentId}/receipt`, {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Could not open receipt");
+      if (!res.ok) {
+        let msg = "Could not open receipt";
+        try { const j = await res.json(); msg = j.error || msg; } catch {}
+        throw new Error(msg);
+      }
       const blob = await res.blob();
+
+      // Extract filename from Content-Disposition header
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch ? filenameMatch[1] : "receipt.pdf";
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener";
+      a.download = filename;  // download attribute — not blocked by popup blockers
+      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (e) {
       alert(e.message);
     }

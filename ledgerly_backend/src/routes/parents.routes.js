@@ -27,6 +27,10 @@ router.get('/me', asyncHandler(ctrl.me));
 router.get('/students/:id/fees', [param('id').isUUID()], validate, asyncHandler(ctrl.studentFees));
 router.get('/students/:id/payments', [param('id').isUUID()], validate, asyncHandler(ctrl.studentPayments));
 
+// Parent-scoped receipt download — verifies parent↔student link before
+// issuing the PDF. Uses the same issueReceipt logic as the staff endpoint.
+router.get('/payments/:paymentId/receipt', [param('paymentId').isUUID()], validate, asyncHandler(ctrl.downloadReceipt));
+
 // Parent-initiated online payment — uses payments_online controller, not parents
 // controller, because it's the same online_payments table/flow as the staff endpoint.
 router.post('/payments/initiate', [
