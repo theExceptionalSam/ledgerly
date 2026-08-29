@@ -47,6 +47,11 @@ async function getPlatformOverview(req, res) {
     summary: { totalSchools, activeSchools, totalStudents, totalPayments, totalCollected },
     tenants: tenants.map(t => ({
       ...t,
+      // Postgres COUNT() returns bigint, which the `pg` driver serializes as
+      // a string. Coerce all COUNT-derived fields to Number so the JSON
+      // response is consistently numeric (the summary reducers above already
+      // do this for their inputs).
+      user_count: Number(t.user_count),
       student_count: Number(t.student_count),
       payment_count: Number(t.payment_count),
       total_collected: Number(t.total_collected),
@@ -239,6 +244,8 @@ async function getTenants(req, res) {
 
   let result = tenants.map(t => ({
     ...t,
+    // Coerce all COUNT-derived fields to Number (same reason as getPlatformOverview).
+    user_count: Number(t.user_count),
     student_count: Number(t.student_count),
     payment_count: Number(t.payment_count),
     total_collected: Number(t.total_collected),

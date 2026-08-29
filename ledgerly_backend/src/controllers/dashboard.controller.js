@@ -28,7 +28,12 @@ async function getDashboard(req, res) {
   const feeTotals = feeRows[0];
 
   const expected = Number(feeTotals.expected) || 0;
-  const studentCount = feeTotals.student_count || 0;
+  // Postgres COUNT() returns bigint, which the `pg` driver serializes as a
+  // string ("264") — coerce to Number so the response shape matches the other
+  // dashboard fields (and the platform-overview endpoint, which already does
+  // this). Without this, frontend arithmetic on studentCount would silently
+  // do string concatenation.
+  const studentCount = Number(feeTotals.student_count) || 0;
 
   // Collected = sum of non-reversed payments in this term.
   // No JOIN to students: payments are never made for archived students, and even if
