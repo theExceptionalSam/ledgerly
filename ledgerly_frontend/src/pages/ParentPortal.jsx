@@ -407,7 +407,7 @@ function ParentDashboard({ token, parent, onSignOut }) {
                   <div className="list-item-main">
                     <div className="list-item-title">{s.name}</div>
                     <div className="list-item-sub">
-                      {s.class}{s.admission_no ? " · " + s.admission_no : ""}
+                      {s.school_name ? `${s.school_name} · ` : ""}{s.class}{s.admission_no ? " · " + s.admission_no : ""}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>

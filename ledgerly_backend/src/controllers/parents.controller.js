@@ -76,9 +76,10 @@ async function me(req, res) {
   if (!parent) return res.status(404).json({ error: 'Parent not found' });
 
   const { rows: students } = await db.query(
-    `SELECT s.id, s.name, s.class, s.admission_no
+    `SELECT s.id, s.name, s.class, s.admission_no, s.tenant_id, t.name AS school_name
      FROM parent_students ps
      JOIN students s ON s.id = ps.student_id
+     JOIN tenants t ON t.id = s.tenant_id
      WHERE ps.parent_id = $1 AND s.status = 'active'`,
     [parent.id]
   );
@@ -86,14 +87,14 @@ async function me(req, res) {
 }
 
 // Link an additional child to an already-authenticated parent's account.
-// Accepts either a studentId (UUID) or an admissionNo (looked up within the
-// tenant). Same guardian_contact match check as register — the parent's phone
-// must be registered as the guardian for the student they're trying to link.
+// Accepts either a studentId (UUID) or an admissionNo (looked up across ALL
+// tenants — allows a parent to link children in different schools).
+// The parent's phone must match the student's guardian_contact.
 async function linkChild(req, res) {
   const { studentId, admissionNo } = req.body;
-  const { tenantId, id: parentId } = req.parent;
+  const { id: parentId } = req.parent;
 
-  // Look up the parent's phone from the DB (requireParent only sets id + tenantId).
+  // Look up the parent's phone from the DB.
   const { rows: parentRows } = await db.query(`SELECT phone FROM parents WHERE id = $1`, [parentId]);
   const parentPhone = parentRows[0]?.phone;
   if (!parentPhone) return res.status(404).json({ error: 'Parent account not found' });
@@ -109,9 +110,10 @@ async function linkChild(req, res) {
     return res.status(400).json({ error: 'Provide studentId or admissionNo' });
   }
 
+  // Search across ALL tenants — a parent may have children in different schools.
   const { rows: studentRows } = await db.query(
-    `SELECT id, guardian_contact, name, admission_no FROM students WHERE ${lookupField} = $1 AND tenant_id = $2 AND status = 'active'`,
-    [lookupValue, tenantId]
+    `SELECT id, tenant_id, guardian_contact, name, admission_no FROM students WHERE ${lookupField} = $1 AND status = 'active'`,
+    [lookupValue]
   );
   const student = studentRows[0];
   if (!student) return res.status(404).json({ error: 'Student not found. Check the admission number and try again.' });
@@ -126,7 +128,7 @@ async function linkChild(req, res) {
     [randomUUID(), parentId, student.id]
   );
 
-  await recordAudit({ tenantId, actorUserId: null, action: 'create', entityType: 'parent', entityId: parentId, ipAddress: req.ip, metadata: { action: 'link_child', studentId: student.id, studentName: student.name } });
+  await recordAudit({ tenantId: student.tenant_id, actorUserId: null, action: 'create', entityType: 'parent', entityId: parentId, ipAddress: req.ip, metadata: { action: 'link_child', studentId: student.id, studentName: student.name } });
   res.json({ ok: true, studentName: student.name });
 }
 
@@ -136,7 +138,13 @@ async function studentFees(req, res) {
   const { rows: linkRows } = await db.query(`SELECT 1 FROM parent_students WHERE parent_id = $1 AND student_id = $2`, [req.parent.id, studentId]);
   if (!linkRows[0]) return res.status(403).json({ error: 'You are not linked to this student' });
 
-  const { rows: termRows } = await db.query(`SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`, [req.parent.tenantId]);
+  // Look up the student's actual tenant — the parent may have children in
+  // different schools, so we can't use req.parent.tenantId here.
+  const { rows: studentRows } = await db.query(`SELECT tenant_id FROM students WHERE id = $1`, [studentId]);
+  const studentTenantId = studentRows[0]?.tenant_id;
+  if (!studentTenantId) return res.status(404).json({ error: 'Student not found' });
+
+  const { rows: termRows } = await db.query(`SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`, [studentTenantId]);
   const termId = termRows[0]?.id;
   if (!termId) return res.json({ fees: [] });
 
@@ -148,7 +156,7 @@ async function studentFees(req, res) {
      JOIN fee_heads fh ON fh.id = sfa.fee_head_id
      WHERE sfa.tenant_id = $1 AND sfa.student_id = $2 AND sfa.term_id = $3
      ORDER BY fh.name`,
-    [req.parent.tenantId, studentId, termId]
+    [studentTenantId, studentId, termId]
   );
   const fees = rows.map((a) => ({ ...a, outstanding: Math.max(a.expected_amount - a.discount_amount - a.paid, 0) }));
   res.json({ fees });
@@ -159,6 +167,11 @@ async function studentPayments(req, res) {
   const { rows: linkRows } = await db.query(`SELECT 1 FROM parent_students WHERE parent_id = $1 AND student_id = $2`, [req.parent.id, studentId]);
   if (!linkRows[0]) return res.status(403).json({ error: 'You are not linked to this student' });
 
+  // Look up the student's actual tenant (may differ from parent's home tenant).
+  const { rows: studentRows } = await db.query(`SELECT tenant_id FROM students WHERE id = $1`, [studentId]);
+  const studentTenantId = studentRows[0]?.tenant_id;
+  if (!studentTenantId) return res.status(404).json({ error: 'Student not found' });
+
   const { rows } = await db.query(
     `SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.created_at, fh.name AS fee_head_name, t.name AS term_name
      FROM payments p
@@ -167,34 +180,33 @@ async function studentPayments(req, res) {
      WHERE p.tenant_id = $1 AND p.student_id = $2 AND p.reversed = 0
      ORDER BY p.paid_on DESC
      LIMIT 200`,
-    [req.parent.tenantId, studentId]
+    [studentTenantId, studentId]
   );
   res.json({ payments: rows });
 }
 
 // Parent-scoped receipt download. Verifies the parent is linked to the
 // student who made the payment, then delegates to the same issueReceipt
-// logic used by the staff endpoint (so the receipt number, branding, and
-// PDF layout are identical).
+// logic used by the staff endpoint. Uses the payment's actual tenant_id
+// (not the parent's home tenant) so it works across schools.
 async function downloadReceipt(req, res) {
   const { paymentId } = req.params;
-  const { tenantId, id: parentId } = req.parent;
+  const { id: parentId } = req.parent;
 
   // Verify the payment belongs to a student linked to this parent.
+  // Don't filter by tenant_id here — the payment may be in a different school.
   const { rows: payRows } = await db.query(
-    `SELECT p.student_id FROM payments p
+    `SELECT p.student_id, p.tenant_id FROM payments p
      JOIN parent_students ps ON ps.student_id = p.student_id
-     WHERE p.id = $1 AND p.tenant_id = $2 AND ps.parent_id = $3 AND p.reversed = 0`,
-    [paymentId, tenantId, parentId]
+     WHERE p.id = $1 AND ps.parent_id = $2 AND p.reversed = 0`,
+    [paymentId, parentId]
   );
   if (!payRows[0]) return res.status(404).json({ error: 'Payment not found or not linked to your account' });
 
-  // Delegate to the existing issueReceipt controller. It expects req.user
-  // (staff auth), so we mock it with the parent's tenant context.
-  // actorUserId is set to null because the parent isn't in the users table —
-  // issueReceipt's recordAudit call accepts null actorUserId.
+  // Use the payment's actual tenant_id — the parent may have children in
+  // different schools, so we can't use req.parent.tenantId.
   const receiptsCtrl = require('./receipts.controller');
-  req.user = { tenantId, id: null, role: 'parent' };
+  req.user = { tenantId: payRows[0].tenant_id, id: null, role: 'parent' };
   return receiptsCtrl.issueReceipt(req, res);
 }
 
