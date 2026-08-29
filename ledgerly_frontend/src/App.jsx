@@ -45,6 +45,7 @@ const PaymentPlans = lazy(() => import("./pages/PaymentPlans"));
 const Settings = lazy(() => import("./pages/Settings"));
 const DataRequests = lazy(() => import("./pages/DataRequests"));
 const Webhooks = lazy(() => import("./pages/Webhooks"));
+const Receipts = lazy(() => import("./pages/Receipts"));
 
 function PageLoader() {
   return <div className="page-loading">Loading…</div>;
@@ -80,6 +81,11 @@ export default function App() {
               <Route path="/finance" element={
                 <ProtectedRoute>
                   <Layout><Finance /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/receipts" element={
+                <ProtectedRoute roles={["owner", "accountant", "bursar"]}>
+                  <Layout><Receipts /></Layout>
                 </ProtectedRoute>
               } />
               <Route path="/fee-heads" element={

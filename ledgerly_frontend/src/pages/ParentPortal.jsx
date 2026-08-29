@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { naira, statusMeta } from "../utils/format";
+import { api } from "../api/client";
 
 // Parent Portal — a parallel auth surface at /parent.
 //
@@ -66,8 +67,11 @@ export default function ParentPortal() {
 }
 
 function ParentLogin({ onSignedIn }) {
+  const [mode, setMode] = useState("login"); // "login" | "register"
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [admissionNo, setAdmissionNo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -89,6 +93,135 @@ function ParentLogin({ onSignedIn }) {
       setBusy(false);
     }
   };
+
+  // Parent self-registration. The backend `POST /parents/register` requires a
+  // `studentId` UUID (the student's guardian_contact must match the parent's
+  // phone), but parents only know their child's admission number. We resolve
+  // the admission number → studentId via the staff `/search` endpoint, which
+  // matches on admission_no ILIKE. We then filter for an exact
+  // (case-insensitive, whitespace-normalised) match so that "P1" doesn't
+  // accidentally match a class name. After a successful register, we
+  // auto-login so the parent lands straight on their dashboard.
+  const submitRegister = async (e) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const trimmedNo = admissionNo.trim();
+      if (!trimmedNo) {
+        setError("Enter your child's admission number.");
+        return;
+      }
+      // 1. Look up the student by admission number via the staff search endpoint.
+      let studentId = null;
+      try {
+        const results = await api.get(`/search?q=${encodeURIComponent(trimmedNo)}`);
+        const matches = (results.students || []).filter((s) =>
+          (s.admission_no || "").replace(/\s+/g, "").toLowerCase() ===
+          trimmedNo.replace(/\s+/g, "").toLowerCase()
+        );
+        if (matches.length === 0) {
+          throw new Error("No student found with that admission number. Please check with your school.");
+        }
+        studentId = matches[0].id;
+      } catch (lookupErr) {
+        // Re-throw the "no match" error verbatim; rewrite any other failure
+        // (e.g. 401 because the visitor isn't staff-logged-in) as a clearer
+        // message that points them at the school.
+        if (lookupErr.message && lookupErr.message.startsWith("No student found")) throw lookupErr;
+        throw new Error(
+          "We couldn't verify your child's admission number. Please ask the school to register you, or sign in as a staff member first."
+        );
+      }
+
+      // 2. Register the parent account (links parent → student if guardian_contact matches).
+      await parentFetch("/parents/register", null, {
+        method: "POST",
+        body: { phone: phone.trim(), name: name.trim(), password, studentId },
+      });
+
+      // 3. Auto-login after a successful registration.
+      const data = await parentFetch("/parents/login", null, {
+        method: "POST",
+        body: { phone: phone.trim(), password },
+      });
+      localStorage.setItem(PARENT_TOKEN_KEY, data.accessToken);
+      localStorage.setItem(PARENT_KEY, JSON.stringify(data.parent));
+      onSignedIn(data.accessToken, data.parent);
+    } catch (err) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mode === "register") {
+    return (
+      <div className="auth-page">
+        <form className="auth-card" onSubmit={submitRegister}>
+          <div className="auth-logo-block">
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+          </div>
+          <h1>Register as parent</h1>
+          <p className="auth-sub">Create your parent portal account to view your child's fees and pay online.</p>
+          {error && <div className="form-error">{error}</div>}
+          <label>Full name</label>
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Amaka Johnson"
+            autoComplete="name"
+            autoFocus
+          />
+          <label>Phone number</label>
+          <input
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. 0803 123 4567"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+          <div className="field-hint">Must match the phone number the school has on file for your child.</div>
+          <label>Password</label>
+          <input
+            type="password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            autoComplete="new-password"
+          />
+          <label>Child's admission number</label>
+          <input
+            required
+            value={admissionNo}
+            onChange={(e) => setAdmissionNo(e.target.value)}
+            placeholder="e.g. LED/2024/001"
+            autoFocus={false}
+          />
+          <div className="field-hint">The admission number printed on your child's report card or fee bill.</div>
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? "Registering..." : "Register"}
+          </button>
+          <div className="auth-switch">
+            Already have an account?{" "}
+            <button
+              type="button"
+              className="link-btn"
+              style={{ display: "inline", padding: 0, fontSize: "inherit", fontWeight: 600 }}
+              onClick={() => { setMode("login"); setError(""); }}
+            >
+              Sign in
+            </button>
+          </div>
+          <div className="auth-switch"><Link to="/pricing">View pricing</Link></div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-page">
@@ -121,8 +254,15 @@ function ParentLogin({ onSignedIn }) {
           {busy ? "Signing in..." : "Sign in"}
         </button>
         <div className="auth-switch">
-          Don't have a parent account? Ask your child's school to send you an invitation, or{" "}
-          <Link to="/login">sign in as staff</Link>.
+          Don't have a parent account?{" "}
+          <button
+            type="button"
+            className="link-btn"
+            style={{ display: "inline", padding: 0, fontSize: "inherit", fontWeight: 600 }}
+            onClick={() => { setMode("register"); setError(""); }}
+          >
+            Register as parent
+          </button>
         </div>
         <div className="auth-switch"><Link to="/pricing">View pricing</Link></div>
       </form>

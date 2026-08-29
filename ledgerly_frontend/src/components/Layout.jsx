@@ -23,6 +23,30 @@ export default function Layout({ children }) {
     return () => window.removeEventListener("mousedown", handler);
   }, [moreOpen]);
 
+  // Onboarding auto-trigger — if a freshly-logged-in school has 0 students and
+  // hasn't dismissed the wizard, redirect to /onboarding. The flag persists in
+  // localStorage so we only check once per browser (until the wizard completes
+  // or the user clears the key).
+  useEffect(() => {
+    if (!user) return;
+    if (localStorage.getItem("ledgerly_onboarding_done")) return;
+    if (window.location.pathname === "/onboarding") return;
+
+    api.get("/students?pageSize=1")
+      .then((d) => {
+        const total = d.total || (d.students && d.students.length) || 0;
+        if (total === 0) {
+          navigate("/onboarding");
+        } else {
+          // Has students → mark onboarding as done so we don't check again.
+          localStorage.setItem("ledgerly_onboarding_done", "1");
+        }
+      })
+      .catch(() => {
+        // If the check fails (e.g. 401), don't redirect — the auth handler will deal with it.
+      });
+  }, [user, navigate]);
+
   const handleLogout = async () => {
     await logout();
     navigate("/login");
@@ -31,6 +55,9 @@ export default function Layout({ children }) {
   const isOwner = user?.role === "owner";
   const isOwnerOrBursar = isOwner || user?.role === "bursar";
   const isOwnerOrAccountant = isOwner || user?.role === "accountant";
+  // Receipts is a core accounting page — visible to owner, accountant, bursar
+  // (matches the /receipts route guard in App.jsx).
+  const canViewReceipts = isOwner || user?.role === "accountant" || user?.role === "bursar";
 
   return (
     <div className="app-shell">
@@ -59,6 +86,9 @@ export default function Layout({ children }) {
             <NavLink to="/" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Dashboard</NavLink>
             <NavLink to="/students" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Students</NavLink>
             <NavLink to="/finance" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Finance</NavLink>
+            {canViewReceipts && (
+              <NavLink to="/receipts" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Receipts</NavLink>
+            )}
             <NavLink to="/fee-heads" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Fee Heads</NavLink>
             <NavLink to="/sessions" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Terms</NavLink>
             {isOwner && (
@@ -147,6 +177,7 @@ export default function Layout({ children }) {
 
 /* --------------------- Notification bell --------------------- */
 function NotificationBell() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -161,7 +192,15 @@ function NotificationBell() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  // Initial load + 60-second polling. The interval is cleared on unmount or
+  // when `user` changes (login/logout) so we never leak a timer or poll with
+  // a stale auth context.
+  useEffect(() => {
+    if (!user) return;
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     if (!open) return;
@@ -297,7 +336,7 @@ function GlobalSearch() {
             <div className="global-search-group">
               <div className="global-search-group-title">Students</div>
               {students.map((s) => (
-                <button key={s.id} className="global-search-item" onClick={() => pick("/students")}>
+                <button key={s.id} className="global-search-item" onClick={() => pick(`/students?expand=${s.id}`)}>
                   <div className="global-search-item-title">{s.name}</div>
                   <div className="global-search-item-sub">{s.class || "—"}{s.admission_no ? ` · ${s.admission_no}` : ""}</div>
                 </button>
@@ -308,7 +347,19 @@ function GlobalSearch() {
             <div className="global-search-group">
               <div className="global-search-group-title">Payments</div>
               {payments.map((p) => (
-                <button key={p.id} className="global-search-item" onClick={() => pick("/finance")}>
+                <button
+                  key={p.id}
+                  className="global-search-item"
+                  onClick={() => pick(
+                    // Deep-link to the student's payments list when the backend
+                    // exposes `student_id` on the payment row. The current
+                    // `/search` endpoint returns `student_name` but NOT
+                    // `student_id`, so we fall back to `/finance` (per spec).
+                    p.student_id
+                      ? `/students?expand=${p.student_id}&highlight=${p.id}`
+                      : "/finance"
+                  )}
+                >
                   <div className="global-search-item-title">{naira(p.amount)} · {fmtShort(p.paid_on)}</div>
                   <div className="global-search-item-sub">{p.student_name || "—"}{p.fee_head_name ? ` · ${p.fee_head_name}` : ""}</div>
                 </button>

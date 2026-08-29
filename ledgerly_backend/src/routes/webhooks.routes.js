@@ -18,5 +18,6 @@ router.patch('/:id', [
   body('events').optional().isArray(),
 ], validate, asyncHandler(ctrl.updateEndpoint));
 router.delete('/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.deleteEndpoint));
+router.get('/:id/deliveries', [param('id').isUUID()], validate, asyncHandler(ctrl.listDeliveries));
 
 module.exports = router;

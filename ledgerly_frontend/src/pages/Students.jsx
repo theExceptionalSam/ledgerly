@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { naira, statusMeta } from "../utils/format";
 import { useAuth } from "../context/AuthContext";
@@ -34,6 +35,14 @@ export default function Students() {
   const [selected, setSelected] = useState(new Set());
   const [viewArchived, setViewArchived] = useState(false);
 
+  // Deep-link params — `?expand=<studentId>` auto-opens a student's detail
+  // panel; `?highlight=<paymentId>` additionally switches to the Payments tab
+  // and scrolls to / briefly highlights that payment row. Set by the global
+  // search bar in Layout.jsx when a student result is clicked.
+  const [searchParams] = useSearchParams();
+  const expandId = searchParams.get("expand");
+  const highlightId = searchParams.get("highlight");
+
   const canEdit = ["owner", "bursar", "accountant"].includes(user.role);
   const canDelete = ["owner", "bursar"].includes(user.role);
   const isOwner = user.role === "owner";
@@ -68,6 +77,32 @@ export default function Students() {
     setTab("fees");
     api.get(`/students/${expanded}?termId=${selectedTermId}`).then(setDetail).catch((e) => setError(e.message));
   }, [expanded, selectedTermId]);
+
+  // Deep-link: auto-expand the student whose id is in ?expand=<id>. The
+  // existing `expanded` useEffect above then loads their detail via
+  // /students/:id?termId=…. We deliberately don't include `expanded` in the
+  // deps so that once the user manually clicks a different student row, this
+  // effect doesn't yank them back to the deep-link target.
+  useEffect(() => {
+    if (!expandId || viewArchived) return;
+    setExpanded(expandId);
+  }, [expandId, viewArchived]);
+
+  // After the detail (with payments) loads, if a ?highlight=<paymentId> is
+  // present, switch to the Payments tab and scroll the matching payment row
+  // into view. The 80ms timeout gives React a tick to paint the payments list
+  // before we try to scroll to it.
+  useEffect(() => {
+    if (!highlightId || !detail) return;
+    const payments = detail.payments || [];
+    if (!payments.some((p) => p.id === highlightId)) return;
+    setTab("payments");
+    const t = setTimeout(() => {
+      const el = document.getElementById(`payment-${highlightId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [highlightId, detail]);
 
   // Apply class filter first, then compute counts from the class-filtered list
   // so the chips show the breakdown for the selected class (or all classes).
@@ -147,6 +182,86 @@ export default function Students() {
     api.openPdf(`/payments/${paymentId}/receipt`).catch((e) => alert(e.message));
   };
 
+  // Email a receipt to the student's guardian_contact. Backend returns 400 if
+  // the contact isn't an email-shaped string, or 503 if Resend isn't configured
+  // — both surface as `e.message` here, so a single alert covers all cases.
+  const emailReceipt = async (paymentId) => {
+    try {
+      const res = await api.post(`/payments/${paymentId}/receipt/email`);
+      alert(`Receipt emailed to ${res.emailedTo}`);
+    } catch (e) {
+      alert(e.message || "Could not email receipt");
+    }
+  };
+
+  // True when a deep-linked student (?expand=<id>) is loaded but isn't on the
+  // current page — in that case we render a standalone detail panel above the
+  // list (see renderDetailPanel below) so the user still sees their data
+  // without having to page through the list to find them.
+  const deepLinkActive = !!expandId
+    && !viewArchived
+    && !!detail
+    && !!detail.student
+    && detail.student.id === expandId
+    && !students.some((s) => s.id === expandId);
+
+  // Shared JSX for the expandable detail panel (tabs + fees table + payment
+  // history + action row). Used both inline (inside the list rows) and by the
+  // standalone deep-link view above the list. `highlightId` only applies the
+  // highlight class to the matching payment row — the actual scroll-into-view
+  // is handled by the highlight useEffect above.
+  const renderDetailPanel = (studentId, studentName) => (
+    <div className="list-item-detail">
+      <div className="detail-tabs">
+        <button className={"tab-btn" + (tab === "fees" ? " active" : "")} onClick={() => setTab("fees")}>Fees</button>
+        <button className={"tab-btn" + (tab === "payments" ? " active" : "")} onClick={() => setTab("payments")}>Payments</button>
+      </div>
+
+      {tab === "fees" && (
+        <FeeTable
+          fees={detail.fees}
+          feeHeads={feeHeads}
+          isOwner={isOwner}
+          canEdit={canEdit}
+          onAssign={assignFee}
+          onDiscount={applyDiscount}
+          studentId={studentId}
+        />
+      )}
+
+      {tab === "payments" && (
+        <div>
+          {detail.payments.length === 0 && <div className="empty-state" style={{ padding: "16px" }}>No payments recorded for this term.</div>}
+          {detail.payments.length > 0 && (
+            <div className="payment-history">
+              <div className="payment-history-title">Payment history</div>
+              {detail.payments.map((p) => (
+                <div
+                  key={p.id}
+                  id={`payment-${p.id}`}
+                  className={"payment-history-row" + (p.id === highlightId ? " payment-highlight" : "")}
+                >
+                  <span>{p.paid_on} · {p.fee_head_name || "General"}{p.recorded_by_name ? " · by " + p.recorded_by_name : ""}{p.note ? " · " + p.note : ""}</span>
+                  <span className="payment-history-right">
+                    {naira(p.amount)}
+                    <button className="link-btn" onClick={() => openReceipt(p.id)}>Receipt</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="action-row">
+          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setPayFor(studentId)}>Record payment</button>
+          <button className="btn-danger-ghost" onClick={() => archive(studentId, studentName)}>Remove</button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <TermSwitcher />
@@ -214,9 +329,37 @@ export default function Students() {
             </div>
           )}
 
-          {filtered.length === 0 && <div className="empty-state">{viewArchived ? "No archived students." : "No students match yet."}</div>}
+          {filtered.length === 0 && !deepLinkActive && <div className="empty-state">{viewArchived ? "No archived students." : "No students match yet."}</div>}
 
           <div className="list">
+            {/*
+              Deep-link detail view — rendered above the list when the URL has
+              ?expand=<id> but the student isn't on the current page (e.g. the
+              school has >50 students and the deep-linked student is on page 2).
+              The existing `expanded` useEffect (above) loads `detail` via
+              /students/:id?termId=…, so we just need to surface it standalone
+              here. When the student IS on the current page, the inline detail
+              panel (rendered inside `filtered.map` below) handles it and this
+              block is skipped.
+            */}
+            {deepLinkActive && (
+              <div className="list-item">
+                <div className="list-item-row">
+                  <div className="list-item-main">
+                    <div className="list-item-title">{detail.student.name}</div>
+                    <div className="list-item-sub">
+                      {detail.student.class}{detail.student.admission_no ? " · " + detail.student.admission_no : ""}
+                      {detail.student.guardian_contact ? " · Parent: " + detail.student.guardian_contact : ""}
+                    </div>
+                  </div>
+                </div>
+                <div className="deep-link-notice">
+                  Opened via search — this student is not on the current page. Clear filters or change page to see them in the list.
+                </div>
+                {renderDetailPanel(detail.student.id, detail.student.name)}
+              </div>
+            )}
+
             {filtered.map((s) => {
               const meta = statusMeta[s.status] || statusMeta.unset;
               const isOpen = expanded === s.id;
@@ -251,53 +394,7 @@ export default function Students() {
                     )}
                   </div>
 
-                  {isOpen && detail && (
-                    <div className="list-item-detail">
-                      <div className="detail-tabs">
-                        <button className={"tab-btn" + (tab === "fees" ? " active" : "")} onClick={() => setTab("fees")}>Fees</button>
-                        <button className={"tab-btn" + (tab === "payments" ? " active" : "")} onClick={() => setTab("payments")}>Payments</button>
-                      </div>
-
-                      {tab === "fees" && (
-                        <FeeTable
-                          fees={detail.fees}
-                          feeHeads={feeHeads}
-                          isOwner={isOwner}
-                          canEdit={canEdit}
-                          onAssign={assignFee}
-                          onDiscount={applyDiscount}
-                          studentId={s.id}
-                        />
-                      )}
-
-                      {tab === "payments" && (
-                        <div>
-                          {detail.payments.length === 0 && <div className="empty-state" style={{ padding: "16px" }}>No payments recorded for this term.</div>}
-                          {detail.payments.length > 0 && (
-                            <div className="payment-history">
-                              <div className="payment-history-title">Payment history</div>
-                              {detail.payments.map((p) => (
-                                <div key={p.id} className="payment-history-row">
-                                  <span>{p.paid_on} · {p.fee_head_name || "General"}{p.recorded_by_name ? " · by " + p.recorded_by_name : ""}{p.note ? " · " + p.note : ""}</span>
-                                  <span className="payment-history-right">
-                                    {naira(p.amount)}
-                                    <button className="link-btn" onClick={() => openReceipt(p.id)}>Receipt</button>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {canEdit && (
-                        <div className="action-row">
-                          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setPayFor(s.id)}>Record payment</button>
-                          <button className="btn-danger-ghost" onClick={() => archive(s.id, s.name)}>Remove</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {isOpen && detail && renderDetailPanel(s.id, s.name)}
                 </div>
               );
             })}
@@ -330,6 +427,7 @@ export default function Students() {
           termId={selectedTermId}
           onClose={() => setPayFor(null)}
           onReceipt={openReceipt}
+          onEmailReceipt={emailReceipt}
         />
       )}
     </div>
@@ -545,7 +643,7 @@ function UploadModal({ onClose, onDone }) {
   );
 }
 
-function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
+function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceipt }) {
   const [lines, setLines] = useState(() => {
     // Default: one line for the fee head with the largest outstanding balance.
     const withOutstanding = fees.filter((f) => f.outstanding > 0);
@@ -602,7 +700,10 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt }) {
         <div className="field-hint" style={{ marginTop: 0 }}>Saved {savedPaymentIds.length} payment(s) for {student?.name}.</div>
         <div className="action-row">
           {savedPaymentIds.map((id) => (
-            <button key={id} className="btn-primary" onClick={() => onReceipt(id)}>Print receipt</button>
+            <div key={id} style={{ display: "flex", gap: 8 }}>
+              <button className="btn-primary" onClick={() => onReceipt(id)}>Print receipt</button>
+              <button className="btn-ghost" onClick={() => onEmailReceipt(id)}>Email receipt</button>
+            </div>
           ))}
         </div>
         <button className="btn-primary btn-full" onClick={onClose}>Done</button>

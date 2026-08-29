@@ -24,7 +24,7 @@ async function search(req, res) {
       [req.user.tenantId, like]
     ),
     db.query(
-      `SELECT p.id, p.amount, p.method, p.note, p.paid_on, s.name AS student_name, fh.name AS fee_head_name
+      `SELECT p.id, p.amount, p.method, p.note, p.paid_on, p.student_id, s.name AS student_name, fh.name AS fee_head_name
        FROM payments p
        LEFT JOIN students s ON s.id = p.student_id
        LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id

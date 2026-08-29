@@ -20,6 +20,15 @@ const { recordAudit } = require('../utils/audit');
 
 async function setup(req, res) {
   const { id: userId, tenantId } = req.user;
+
+  // Guard against re-setup on already-enabled accounts: clicking "Enable 2FA"
+  // when 2FA is already on would silently rotate the secret and lock the user
+  // out of their authenticator app. They must disable first.
+  const { rows: checkRows } = await db.query(`SELECT twofa_enabled FROM users WHERE id = $1 AND tenant_id = $2`, [userId, tenantId]);
+  if (checkRows[0]?.twofa_enabled) {
+    return res.status(409).json({ error: '2FA is already enabled. Disable it first if you want to set up a new device.' });
+  }
+
   const secret = authenticator.generateSecret();
   await db.query(`UPDATE users SET twofa_secret = $1 WHERE id = $2 AND tenant_id = $3`, [secret, userId, tenantId]);
 

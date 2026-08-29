@@ -177,7 +177,7 @@ async function listReceipts(req, res) {
   pageParams.push(pageSize);
   pageParams.push((page - 1) * pageSize);
   const pageRes = db.query(
-    `SELECT r.id, r.receipt_number, r.issued_at,
+    `SELECT r.id, r.receipt_number, r.issued_at, r.payment_id,
             p.amount, p.method, p.paid_on,
             s.name AS student_name, s.class AS student_class,
             fh.name AS fee_head_name,

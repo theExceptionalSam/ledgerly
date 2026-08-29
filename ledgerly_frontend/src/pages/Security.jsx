@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import QRCode from "qrcode";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
@@ -44,16 +45,36 @@ export default function Security() {
 
 function TwoFASection() {
   const { user, setUser } = useAuth();
-  // Track 2FA status in local state. The backend /auth/me endpoint doesn't return
-  // twofaEnabled today (no status endpoint exists in twofa.controller.js), so we
-  // start as null (unknown) and update locally when the user enables or disables.
-  // This won't survive page reload — see "Next actions" in the worklog.
-  const [status, setStatus] = useState(null); // true = enabled, false = disabled, null = unknown
+  // 2FA status comes from /auth/me (twofaEnabled boolean on the user object —
+  // shipped by Task E-backend-p2). On a full page reload, AuthContext's /auth/me
+  // call populates user.twofaEnabled before this component mounts (ProtectedRoute
+  // gates on `initializing`), so the "Enabled"/"Disabled" badge is correct on
+  // first paint without a separate API call. On in-app navigation right after
+  // login (before any reload), the login/verifyOtp responses don't include
+  // twofaEnabled, so we fall back to null (unknown) — the UI then shows the
+  // "Enable 2FA" button plus the rotation hint below.
+  const [status, setStatus] = useState(user?.twofaEnabled ?? null); // true = enabled, false = disabled, null = unknown
   const [setup, setSetup] = useState(null); // { secret, qrCodeUrl }
+  const [qrDataUrl, setQrDataUrl] = useState(""); // data: URL rendered client-side by the bundled qrcode lib
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Generate the QR code client-side from the otpauth:// URL returned by the
+  // backend, instead of handing the secret to a third-party QR-image API
+  // (previously api.qrserver.com). Regenerates whenever setup.qrCodeUrl changes,
+  // and clears the data URL when setup is dismissed (so a stale QR is never shown).
+  useEffect(() => {
+    if (!setup?.qrCodeUrl) { setQrDataUrl(""); return; }
+    QRCode.toDataURL(setup.qrCodeUrl, {
+      width: 200,
+      margin: 2,
+      color: { dark: "#14213D", light: "#FFFFFF" }, // navy ink on paper white — matches brand palette
+    })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(""));
+  }, [setup?.qrCodeUrl]);
 
   const beginSetup = async () => {
     setError(""); setSuccess(""); setBusy(true);
@@ -128,13 +149,32 @@ function TwoFASection() {
             Scan this QR code with your authenticator app, then enter the 6-digit code it shows.
           </p>
           <div style={{ textAlign: "center", margin: "12px 0" }}>
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setup.qrCodeUrl)}`}
-              alt="2FA QR code"
-              width={200}
-              height={200}
-              style={{ borderRadius: 8, border: "1px solid var(--line)" }}
-            />
+            {qrDataUrl ? (
+              <img
+                src={qrDataUrl}
+                alt="2FA QR code"
+                width={200}
+                height={200}
+                style={{ borderRadius: 8, border: "1px solid var(--line)" }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 200,
+                  height: 200,
+                  background: "#EDECE6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  color: "#5B5B54",
+                  fontSize: 14,
+                }}
+              >
+                Loading QR…
+              </div>
+            )}
             <div className="field-hint" style={{ wordBreak: "break-all", marginTop: 8 }}>
               Can't scan? Enter this secret manually: <code>{setup.secret}</code>
             </div>

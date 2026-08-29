@@ -146,6 +146,7 @@ export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: "POST", body }),
   put: (path, body) => request(path, { method: "PUT", body }),
+  patch: (path, body) => request(path, { method: "PATCH", body }),
   del: (path, body) => request(path, { method: "DELETE", body }),
   upload,
   download,

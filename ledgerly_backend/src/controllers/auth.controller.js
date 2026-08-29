@@ -275,7 +275,7 @@ async function logoutAll(req, res) {
 }
 
 async function me(req, res) {
-  const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id FROM users WHERE id = $1`, [req.user.id]);
+  const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id, twofa_enabled FROM users WHERE id = $1`, [req.user.id]);
   const user = userRows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
@@ -283,7 +283,7 @@ async function me(req, res) {
   const { rows: termRows } = await db.query(`SELECT id, name FROM terms WHERE tenant_id = $1 AND is_current = 1`, [user.tenant_id]);
   const currentTerm = termRows[0];
   res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, twofaEnabled: !!user.twofa_enabled },
     tenant,
     currentTerm: currentTerm || null,
   });

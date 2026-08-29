@@ -135,4 +135,35 @@ async function deliverWebhook(tenantId, event, payload) {
   }
 }
 
-module.exports = { listEndpoints, createEndpoint, deleteEndpoint, deliverWebhook, updateEndpoint };
+// GET /webhooks/:id/deliveries — paginated delivery history for one endpoint.
+// Verifies the endpoint belongs to the tenant (so a tenant can't read another
+// tenant's delivery history by guessing endpoint IDs), then returns the most
+// recent deliveries with a total count for the pager. page/pageSize are clamped
+// to safe bounds (1-200) so a caller can't request an unbounded result set.
+async function listDeliveries(req, res) {
+  const { id } = req.params;  // endpoint ID
+  const { page = 1, pageSize = 50 } = req.query;
+
+  // Verify the endpoint belongs to the tenant
+  const { rows: epRows } = await db.query(
+    `SELECT id FROM webhook_endpoints WHERE id = $1 AND tenant_id = $2`,
+    [id, req.user.tenantId]
+  );
+  if (!epRows[0]) return res.status(404).json({ error: 'Endpoint not found' });
+
+  const limit = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 200);
+  const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limit;
+
+  const [countRes, rowsRes] = await Promise.all([
+    db.query(`SELECT COUNT(*)::int AS total FROM webhook_deliveries WHERE endpoint_id = $1`, [id]),
+    db.query(
+      `SELECT id, event, status, response_code, attempts, created_at
+       FROM webhook_deliveries WHERE endpoint_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
+    ),
+  ]);
+  res.json({ deliveries: rowsRes.rows, total: countRes.rows[0].total, page: Math.max(parseInt(page, 10) || 1, 1), pageSize: limit });
+}
+
+module.exports = { listEndpoints, createEndpoint, deleteEndpoint, deliverWebhook, updateEndpoint, listDeliveries };

@@ -40,6 +40,46 @@ async function initiate(req, res) {
   res.status(201).json({ reference, authorizationUrl });
 }
 
+// Parent-initiated online payment — used by the ParentPortal frontend.
+//
+// Mirrors `initiate` above, but authenticates via `req.parent` (parent token,
+// not staff token) and enforces that the parent is linked to the student they're
+// paying for. Without this check a parent could initiate payments (and get
+// Paystack references) for arbitrary student IDs.
+//
+// Note: `requireParent` sets `req.parent = { id, tenantId }` only — `phone` is
+// NOT on the token payload, so we fetch it from the `parents` row in the same
+// query that verifies the parent↔student link (one round-trip, no N+1).
+async function initiateForParent(req, res) {
+  const { tenantId, id: parentId } = req.parent;
+  const { studentId, feeHeadId, termId, amount } = req.body;
+
+  // Verify the parent is linked to this student AND fetch their phone in one
+  // query (security check + parent_phone population in a single round-trip).
+  const { rows: linkRows } = await db.query(
+    `SELECT p.phone
+     FROM parents p
+     JOIN parent_students ps ON ps.parent_id = p.id
+     WHERE p.id = $1 AND ps.student_id = $2`,
+    [parentId, studentId]
+  );
+  if (!linkRows[0]) return res.status(403).json({ error: 'This student is not linked to your account' });
+  const phone = linkRows[0].phone;
+
+  const id = randomUUID();
+  const reference = buildReference();
+  await db.query(
+    `INSERT INTO online_payments (id, tenant_id, student_id, fee_head_id, term_id, amount, reference, status, parent_phone)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)`,
+    [id, tenantId, studentId, feeHeadId || null, termId || null, amount, reference, phone]
+  );
+  // No staff audit here — the parent initiated it. Could add a parent audit if needed.
+
+  // TODO: call Paystack POST /transaction/initialize (same TODO as the staff endpoint)
+  const authorizationUrl = `${process.env.WEB_BASE_URL || ''}/payments/online/status?reference=${reference}`;
+  res.status(201).json({ reference, authorizationUrl });
+}
+
 // Paystack webhook — NO auth (the request comes from Paystack's servers, not from
 // an authenticated user). The signature is verified against PAYSTACK_SECRET.
 async function webhook(req, res) {
@@ -139,4 +179,4 @@ async function listOnlinePayments(req, res) {
   res.json({ payments: rows });
 }
 
-module.exports = { initiate, webhook, listOnlinePayments };
+module.exports = { initiate, initiateForParent, webhook, listOnlinePayments };

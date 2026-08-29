@@ -3,6 +3,7 @@ const { body, param } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireParent } = require('../middleware/auth');
 const ctrl = require('../controllers/parents.controller');
+const paymentsOnlineCtrl = require('../controllers/payments_online.controller');
 
 const router = Router();
 
@@ -25,5 +26,14 @@ router.use(requireParent);
 router.get('/me', asyncHandler(ctrl.me));
 router.get('/students/:id/fees', [param('id').isUUID()], validate, asyncHandler(ctrl.studentFees));
 router.get('/students/:id/payments', [param('id').isUUID()], validate, asyncHandler(ctrl.studentPayments));
+
+// Parent-initiated online payment — uses payments_online controller, not parents
+// controller, because it's the same online_payments table/flow as the staff endpoint.
+router.post('/payments/initiate', [
+  body('studentId').isUUID(),
+  body('amount').isFloat({ gt: 0 }),
+  body('feeHeadId').optional().isUUID(),
+  body('termId').optional().isUUID(),
+], validate, asyncHandler(paymentsOnlineCtrl.initiateForParent));
 
 module.exports = router;

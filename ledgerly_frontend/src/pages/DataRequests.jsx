@@ -5,16 +5,18 @@ import { api } from "../api/client";
 // deletion. Both flow through the `data_requests` table.
 //
 // Endpoints:
-//   POST   /data-requests/export    {} → { id, status }          (auto-completes)
+//   POST   /data-requests/export    {} → { id, status }
 //   POST   /data-requests/deletion  {} → { id, scheduledFor, gracePeriodDays }
+//   POST   /data-requests/:id/cancel              → { ok: true }   (deletion only, while pending)
+//   GET    /data-requests/:id/download            → CSV file stream (export only, when completed)
 //   GET    /data-requests           → { requests: [{ id, type, status, processed_at, created_at }] }
 //
-// Export: queues a full CSV export of every tenant-owned row. Currently the
-// backend auto-marks it completed (the actual file generation is a TODO).
+// Export: queues a full CSV export of every tenant-owned row. The backend
+// builds the file synchronously and marks the request completed.
 //
 // Deletion: queues a 30-day grace-period deletion. Only one pending deletion
-// at a time — the backend 409s if there's already one queued. There's no
-// cancel endpoint yet (follow-up).
+// at a time — the backend 409s if there's already one queued. A pending
+// deletion can be cancelled any time before the grace period elapses.
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -44,6 +46,8 @@ export default function DataRequests() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
+  const [cancellingId, setCancellingId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   // Deletion confirm flow
   const [showDelete, setShowDelete] = useState(false);
@@ -69,6 +73,31 @@ export default function DataRequests() {
       setError(e.message);
     } finally {
       setBusy("");
+    }
+  };
+
+  const cancelDeletion = async (r) => {
+    if (!confirm("Cancel this deletion request? Your data will not be deleted.")) return;
+    setCancellingId(r.id); setError(""); setNotice("");
+    try {
+      await api.post(`/data-requests/${r.id}/cancel`, {});
+      setNotice("Deletion request cancelled.");
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const downloadExport = async (r) => {
+    setDownloadingId(r.id); setError("");
+    try {
+      await api.download(`/data-requests/${r.id}/download`, `ledgerly-export-${r.id}.csv`);
+    } catch (e) {
+      setError(e.message || "Could not download the export.");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -143,18 +172,48 @@ export default function DataRequests() {
                   <th>Status</th>
                   <th>Requested</th>
                   <th>Processed</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {requests.map((r) => {
                   const tmeta = TYPE_META[r.type] || { label: r.type, color: "#5B5B54", bg: "#EDECE6" };
                   const smeta = STATUS_META[r.status] || { label: r.status, color: "#5B5B54", bg: "#EDECE6" };
+                  const canCancel = r.type === "deletion" && r.status === "pending";
+                  const canDownload = r.type === "export" && r.status === "completed";
                   return (
                     <tr key={r.id}>
                       <td><span className="badge" style={{ color: tmeta.color, background: tmeta.bg }}>{tmeta.label}</span></td>
                       <td><span className="badge" style={{ color: smeta.color, background: smeta.bg }}>{smeta.label}</span></td>
                       <td>{fmtDate(r.created_at)}</td>
                       <td>{fmtDate(r.processed_at)}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {canCancel && (
+                            <button
+                              className="btn-danger-ghost"
+                              disabled={cancellingId === r.id}
+                              onClick={() => cancelDeletion(r)}
+                              style={{ padding: "5px 10px", fontSize: 12 }}
+                            >
+                              {cancellingId === r.id ? "Cancelling…" : "Cancel"}
+                            </button>
+                          )}
+                          {canDownload && (
+                            <button
+                              className="btn-primary"
+                              disabled={downloadingId === r.id}
+                              onClick={() => downloadExport(r)}
+                              style={{ padding: "5px 12px", fontSize: 12 }}
+                            >
+                              {downloadingId === r.id ? "Preparing…" : "Download CSV"}
+                            </button>
+                          )}
+                          {!canCancel && !canDownload && (
+                            <span style={{ color: "#8A8A82", fontSize: 13 }}>—</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}

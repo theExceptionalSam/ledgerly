@@ -745,3 +745,29 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   .global-search { display: none; }
 }
 
+/* ---------- Deep-link highlight + notice (Students page) ---------- */
+/* Applied to a payment-history-row when arrived at via ?highlight=<paymentId>
+   from the global search. The amber tint fades to transparent over 3s, drawing
+   the user's eye to the specific payment without leaving a permanent mark. */
+.payment-highlight {
+  animation: highlight-fade 3s ease-out;
+  border-radius: 6px;
+}
+@keyframes highlight-fade {
+  0% { background-color: #FEF3C7; }
+  100% { background-color: transparent; }
+}
+
+/* Notice shown above a deep-linked student's detail panel when the student
+   isn't on the current page (e.g. they're on page 2 of the list). Uses the
+   amber tone to match the highlight palette above. */
+.deep-link-notice {
+  background: #FBF0E2;
+  color: #C77D22;
+  border: 1px solid #F2D9B8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
