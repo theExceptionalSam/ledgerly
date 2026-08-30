@@ -19,7 +19,17 @@ export default defineConfig({
       includeAssets: ['app-icon.jpg'],
       manifest: false, // we already have public/manifest.json
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg}'],
+        // Only cache static assets (JS/CSS/images), NOT the HTML. This ensures
+        // the browser always fetches a fresh index.html on navigation, which
+        // references the latest hashed JS/CSS bundles. Without this, Samsung
+        // browsers can get stuck serving a stale cached index.html that
+        // references bundles that no longer exist → blank page.
+        globPatterns: ['**/*.{js,css,ico,png,jpg,svg}'],
+        // Don't use navigateFallback — this was the main cause of the Samsung
+        // blank-page issue. It served a cached index.html for ALL navigations,
+        // which meant new deploys never reached the user until the SW decided
+        // to update (which Samsung browsers delay aggressively).
+        navigateFallback: null,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -47,5 +57,11 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+  },
+  build: {
+    // Target a wider browser set — includes Samsung Internet 12+ and older
+    // Chrome. The default ('modules') can break on browsers that support ES
+    // modules but not newer syntax like optional chaining.
+    target: 'es2019',
   },
 });
