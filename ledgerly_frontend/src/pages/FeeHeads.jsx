@@ -90,8 +90,8 @@ function AddFeeHeadModal({ onClose, onSave }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         {error && <div className="form-error">{error}</div>}
-        <label>Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ICT Levy" />
+        <label htmlFor="fee-head-name">Name</label>
+        <input id="fee-head-name" name="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ICT Levy" autoComplete="off" />
         <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
           {busy ? "Saving..." : "Add"}
         </button>
@@ -136,14 +136,14 @@ function BulkAssignModal({ head, termId, termName, onClose }) {
         ) : (
           <div>
             <div className="field-hint">Assigns {head.name} to every active student in the selected class for the current term.</div>
-            <label>Class</label>
-            <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+            <label htmlFor="fee-head-bulk-class">Class</label>
+            <select id="fee-head-bulk-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
               {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <label>Expected amount (₦)</label>
-            <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" />
+            <label htmlFor="fee-head-bulk-amount">Expected amount (₦)</label>
+            <input id="fee-head-bulk-amount" name="amount" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoComplete="off" />
             <label className="checkbox-row">
-              <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
+              <input id="fee-head-bulk-overwrite" name="overwrite" type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
               Overwrite existing assignments
             </label>
             <button className="btn-primary btn-full" disabled={!amount || busy} onClick={submit}>

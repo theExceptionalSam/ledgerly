@@ -276,13 +276,16 @@ function DeleteModal({ onClose, onDone, onError }) {
           gone forever. Receipts already issued to parents are not affected.
         </div>
 
-        <label>Type <code>{CONFIRM_PHRASE}</code> to confirm</label>
+        <label htmlFor="data-request-confirm">Type <code>{CONFIRM_PHRASE}</code> to confirm</label>
         <input
+          id="data-request-confirm"
+          name="confirmPhrase"
           value={confirmText}
           onChange={(e) => setConfirmText(e.target.value)}
           placeholder={CONFIRM_PHRASE}
           autoFocus
           style={{ fontFamily: "monospace" }}
+          autoComplete="off"
         />
         <div className="field-hint">This action cannot be undone after the grace period.</div>
 

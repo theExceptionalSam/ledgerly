@@ -184,22 +184,22 @@ function CreatePlanModal({ terms, defaultTermId, onClose, onDone }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <label>Student</label>
-        <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+        <label htmlFor="plan-student">Student</label>
+        <select id="plan-student" name="studentId" value={studentId} onChange={(e) => setStudentId(e.target.value)}>
           <option value="">— Select student —</option>
           {students.map((s) => (
             <option key={s.id} value={s.id}>{s.name}{s.class ? ` · ${s.class}` : ""}</option>
           ))}
         </select>
 
-        <label>Fee head</label>
-        <select value={feeHeadId} onChange={(e) => setFeeHeadId(e.target.value)}>
+        <label htmlFor="plan-fee-head">Fee head</label>
+        <select id="plan-fee-head" name="feeHeadId" value={feeHeadId} onChange={(e) => setFeeHeadId(e.target.value)}>
           <option value="">— Select fee head —</option>
           {feeHeads.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </select>
 
-        <label>Term</label>
-        <select value={termId} onChange={(e) => setTermId(e.target.value)}>
+        <label htmlFor="plan-term">Term</label>
+        <select id="plan-term" name="termId" value={termId} onChange={(e) => setTermId(e.target.value)}>
           <option value="">— Select term —</option>
           {terms.map((t) => (
             <option key={t.id} value={t.id}>
@@ -208,21 +208,27 @@ function CreatePlanModal({ terms, defaultTermId, onClose, onDone }) {
           ))}
         </select>
 
-        <label>Total amount (₦)</label>
+        <label htmlFor="plan-total-amount">Total amount (₦)</label>
         <input
+          id="plan-total-amount"
+          name="totalAmount"
           value={totalAmount}
           onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ""))}
           placeholder="0"
           inputMode="decimal"
+          autoComplete="off"
         />
 
-        <label>Number of installments (1–12)</label>
+        <label htmlFor="plan-installments">Number of installments (1–12)</label>
         <input
+          id="plan-installments"
+          name="installments"
           type="number"
           min="1"
           max="12"
           value={installments}
           onChange={(e) => setInstallments(e.target.value)}
+          autoComplete="off"
         />
         <div className="field-hint">
           ~{naira(perInstallment)} per installment
@@ -233,20 +239,27 @@ function CreatePlanModal({ terms, defaultTermId, onClose, onDone }) {
           <div key={i} className="assign-fee-row" style={{ marginTop: 6 }}>
             <strong style={{ fontSize: 13, color: "#5B5B54", width: 80 }}>Installment {i + 1}</strong>
             <input
+              id={`plan-due-date-${i}`}
+              name={`dueDate-${i}`}
               type="date"
               value={d}
               onChange={(e) => setDueDates((arr) => arr.map((x, j) => j === i ? e.target.value : x))}
               style={{ flex: 1 }}
+              autoComplete="off"
+              aria-label={`Due date for installment ${i + 1}`}
             />
           </div>
         ))}
 
-        <label>Late fee per missed installment (₦, optional)</label>
+        <label htmlFor="plan-late-fee">Late fee per missed installment (₦, optional)</label>
         <input
+          id="plan-late-fee"
+          name="lateFee"
           value={lateFee}
           onChange={(e) => setLateFee(e.target.value.replace(/[^0-9.]/g, ""))}
           placeholder="0"
           inputMode="decimal"
+          autoComplete="off"
         />
 
         <button className="btn-primary btn-full" disabled={busy} onClick={submit}>

@@ -287,9 +287,9 @@ export default function Students() {
           {error && <div className="form-error">{error}</div>}
           <div className="toolbar">
             <div className="toolbar-left">
-              <input className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input id="student-search" name="studentSearch" className="search-input" placeholder="Search student" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
               {!viewArchived && (
-                <select className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+                <select id="student-class-filter" name="classFilter" className="class-filter" value={classFilter} onChange={(e) => setClassFilter(e.target.value)} aria-label="Filter by class">
                   <option value="all">All classes</option>
                   {classes.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -326,7 +326,7 @@ export default function Students() {
             <div className="filter-row">
               {canDelete && filtered.length > 0 && (
                 <label className="select-all-chip">
-                  <input type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
+                  <input id="students-select-all" name="selectAll" type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
                   Select all
                 </label>
               )}
@@ -384,11 +384,14 @@ export default function Students() {
                   <div className="list-item-row">
                     {canDelete && !viewArchived && (
                       <input
+                        id={`student-select-${s.id}`}
+                        name={`studentSelect-${s.id}`}
                         type="checkbox"
                         className="row-checkbox"
                         checked={selected.has(s.id)}
                         onClick={(e) => e.stopPropagation()}
                         onChange={() => toggleSelect(s.id)}
+                        aria-label={`Select ${s.name}`}
                       />
                     )}
                     <div className="list-item-main">
@@ -539,8 +542,8 @@ function QuickAmountModal({ title, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div>
-        <label>Expected amount (₦)</label>
-        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus />
+        <label htmlFor="quick-amount">Expected amount (₦)</label>
+        <input id="quick-amount" name="amount" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus autoComplete="off" />
         <button className="btn-primary btn-full" disabled={busy} onClick={submit}>{busy ? "Saving..." : "Assign"}</button>
       </div>
     </div>
@@ -556,10 +559,10 @@ function QuickDiscountModal({ feeHeadName, currentDiscount, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><div className="modal-title">Discount · {feeHeadName}</div><button className="modal-close" onClick={onClose}>✕</button></div>
-        <label>Discount amount (₦)</label>
-        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus />
-        <label>Reason (optional)</label>
-        <input value={reason} onChange={(e) => setReason(e.target.value)} />
+        <label htmlFor="quick-discount-amount">Discount amount (₦)</label>
+        <input id="quick-discount-amount" name="discountAmount" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoFocus autoComplete="off" />
+        <label htmlFor="quick-discount-reason">Reason (optional)</label>
+        <input id="quick-discount-reason" name="reason" value={reason} onChange={(e) => setReason(e.target.value)} autoComplete="off" />
         <button className="btn-primary btn-full" disabled={busy} onClick={submit}>{busy ? "Saving..." : "Apply discount"}</button>
       </div>
     </div>
@@ -599,16 +602,16 @@ function AddStudentModal({ onClose, onSave }) {
     <Modal title="Add student" onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
       <div className="field-hint" style={{ marginTop: 0 }}>Fee heads are assigned after the student is created, from the student detail view.</div>
-      <label>Full name</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Johnson" autoFocus />
-      <label>Class</label>
-      <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+      <label htmlFor="add-student-name">Full name</label>
+      <input id="add-student-name" name="studentName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Johnson" autoFocus autoComplete="name" />
+      <label htmlFor="add-student-class">Class</label>
+      <select id="add-student-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
         {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
-      <label>Admission number (optional)</label>
-      <input value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} />
-      <label>Parent contact</label>
-      <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
+      <label htmlFor="add-student-admission-no">Admission number (optional)</label>
+      <input id="add-student-admission-no" name="admissionNo" value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} autoComplete="off" />
+      <label htmlFor="add-student-guardian-contact">Parent contact</label>
+      <input id="add-student-guardian-contact" name="guardianContact" value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" autoComplete="tel" />
       <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
         {busy ? "Saving..." : "Add student"}
       </button>
@@ -634,16 +637,16 @@ function EditStudentModal({ student, onClose, onSave }) {
   return (
     <Modal title={"Edit " + (student?.name || "student")} onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
-      <label>Full name</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      <label>Class</label>
-      <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+      <label htmlFor="edit-student-name">Full name</label>
+      <input id="edit-student-name" name="studentName" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="name" />
+      <label htmlFor="edit-student-class">Class</label>
+      <select id="edit-student-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
         {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
-      <label>Admission number (optional)</label>
-      <input value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} />
-      <label>Parent contact</label>
-      <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
+      <label htmlFor="edit-student-admission-no">Admission number (optional)</label>
+      <input id="edit-student-admission-no" name="admissionNo" value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} autoComplete="off" />
+      <label htmlFor="edit-student-guardian-contact">Parent contact</label>
+      <input id="edit-student-guardian-contact" name="guardianContact" value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" autoComplete="tel" />
       <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
         {busy ? "Saving..." : "Save changes"}
       </button>
@@ -695,8 +698,8 @@ function UploadModal({ onClose, onDone }) {
           <a className="field-hint" href="#" onClick={(e) => { e.preventDefault(); api.download("/students/bulk/template", "ledgerly-students-template.xlsx"); }}>
             Download the template file
           </a>
-          <label>Choose file (.xlsx, .xls or .csv)</label>
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <label htmlFor="upload-file">Choose file (.xlsx, .xls or .csv)</label>
+          <input id="upload-file" name="file" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           <button className="btn-primary btn-full" disabled={!file || busy} onClick={submit}>
             {busy ? "Uploading..." : "Upload and import"}
           </button>
@@ -794,9 +797,9 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
       )}
       {lines.map((line, i) => (
         <div key={i} className="payment-line">
-          <label>{i === 0 ? "Fee head" : ""}</label>
+          {i === 0 && <label htmlFor="payment-line-fee-head-0">Fee head</label>}
           <div className="payment-line-row">
-            <select value={line.feeHeadId} onChange={(e) => updateLine(i, "feeHeadId", e.target.value)}>
+            <select id={`payment-line-fee-head-${i}`} name={`feeHeadId-${i}`} value={line.feeHeadId} onChange={(e) => updateLine(i, "feeHeadId", e.target.value)} aria-label="Fee head">
               <option value="">Select fee head…</option>
               {fees.map((f) => (
                 <option key={f.fee_head_id} value={f.fee_head_id}>
@@ -804,24 +807,24 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
                 </option>
               ))}
             </select>
-            <input value={line.amount} onChange={(e) => updateLine(i, "amount", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount" inputMode="decimal" />
+            <input id={`payment-line-amount-${i}`} name={`amount-${i}`} value={line.amount} onChange={(e) => updateLine(i, "amount", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount" inputMode="decimal" autoComplete="off" aria-label="Amount" />
             {lines.length > 1 && <button className="tx-remove" onClick={() => removeLine(i)}>✕</button>}
           </div>
         </div>
       ))}
       <button className="link-btn" onClick={addLine}>+ Add another line</button>
-      <label>Method</label>
-      <select value={method} onChange={(e) => setMethod(e.target.value)}>
+      <label htmlFor="payment-method">Method</label>
+      <select id="payment-method" name="method" value={method} onChange={(e) => setMethod(e.target.value)}>
         <option value="cash">Cash</option>
         <option value="bank_transfer">Bank transfer</option>
         <option value="pos">POS</option>
         <option value="cheque">Cheque</option>
         <option value="online">Online</option>
       </select>
-      <label>Date</label>
-      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      <label>Note (optional)</label>
-      <input value={note} onChange={(e) => setNote(e.target.value)} />
+      <label htmlFor="payment-date">Date</label>
+      <input id="payment-date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} autoComplete="off" />
+      <label htmlFor="payment-note">Note (optional)</label>
+      <input id="payment-note" name="note" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
       <button className="btn-primary btn-full" disabled={busy || fees.length === 0} onClick={submit}>
         {busy ? "Saving..." : "Save payment"}
       </button>

@@ -427,6 +427,8 @@ function GlobalSearch() {
   return (
     <div className="global-search" ref={ref}>
       <input
+        id="global-search"
+        name="globalSearch"
         className="global-search-input"
         type="search"
         value={query}
@@ -434,6 +436,7 @@ function GlobalSearch() {
         onFocus={() => setOpen(true)}
         placeholder="Search…"
         aria-label="Search"
+        autoComplete="off"
       />
       {showDropdown && (
         <div className="global-search-dropdown">

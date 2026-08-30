@@ -169,9 +169,9 @@ export default function AuditLog() {
       {notice && <div className="form-error" style={{ background: "#E7F3EC", color: "#1B7A43", borderColor: "#C5E0CF" }}>{notice}</div>}
 
       <div className="toolbar audit-toolbar">
-        <input className="search-input" placeholder="Search audit log (name, action, amount…)" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input id="audit-log-search" name="auditSearch" className="search-input" placeholder="Search audit log (name, action, amount…)" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
         <label className="select-all-chip">
-          <input type="checkbox" checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))} onChange={toggleSelectAll} />
+          <input id="audit-log-select-all" name="selectAll" type="checkbox" checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))} onChange={toggleSelectAll} />
           Select all
         </label>
         <div className="audit-toolbar-actions">
@@ -212,7 +212,7 @@ export default function AuditLog() {
           return (
             <div key={l.id} className={"audit-entry" + (isSelected ? " selected" : "") + (viewDeleted ? " archived" : "")}>
               <div className="audit-entry-top">
-                <input type="checkbox" className="row-checkbox" checked={isSelected} onChange={() => toggleSelect(l.id)} />
+                <input id={`audit-log-select-${l.id}`} name={`auditSelect-${l.id}`} type="checkbox" className="row-checkbox" checked={isSelected} onChange={() => toggleSelect(l.id)} aria-label={`Select entry ${l.id}`} />
                 <div className="audit-entry-content">
                   <div className="audit-entry-header">
                     <span className="audit-dot" style={{ background: color }} />

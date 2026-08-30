@@ -49,10 +49,12 @@ export default function VerifyEmail() {
         <p className="auth-sub">We sent a 6-digit code to your school email. Enter it below to activate your account.</p>
         {error && <div className="form-error">{error}</div>}
         {info && <div className="field-hint" style={{ color: "#1B7A43" }}>{info}</div>}
-        <label>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label>Verification code</label>
+        <label htmlFor="verify-email">Email</label>
+        <input id="verify-email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+        <label htmlFor="verify-code">Verification code</label>
         <input
+          id="verify-code"
+          name="otp"
           required
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}

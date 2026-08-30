@@ -127,28 +127,37 @@ export default function Receipts() {
       <div className="toolbar">
         <div className="toolbar-left">
           <input
+            id="receipts-student-search"
+            name="studentSearch"
             className="search-input"
             type="search"
             placeholder="Filter by student name…"
             value={studentQuery}
             onChange={(e) => setStudentQuery(e.target.value)}
+            autoComplete="off"
           />
           <label style={{ display: "flex", flexDirection: "column", fontSize: 12, color: "var(--ink-soft)" }}>
             From
             <input
+              id="receipts-from-date"
+              name="fromDate"
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
               style={{ marginTop: 2 }}
+              autoComplete="off"
             />
           </label>
           <label style={{ display: "flex", flexDirection: "column", fontSize: 12, color: "var(--ink-soft)" }}>
             To
             <input
+              id="receipts-to-date"
+              name="toDate"
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
               style={{ marginTop: 2 }}
+              autoComplete="off"
             />
           </label>
         </div>

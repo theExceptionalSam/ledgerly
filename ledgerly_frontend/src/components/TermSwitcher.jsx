@@ -20,6 +20,7 @@ export default function TermSwitcher() {
       <label htmlFor="term-select">Term</label>
       <select
         id="term-select"
+        name="termId"
         value={selectedTermId || ""}
         onChange={(e) => setSelectedTermId(e.target.value)}
       >

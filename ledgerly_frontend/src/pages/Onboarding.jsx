@@ -209,16 +209,16 @@ function Step3AddStudent({ termId, onCreated, onBack, onError }) {
         school from the Students page later.
       </p>
       <form onSubmit={submit}>
-        <label>Full name</label>
-        <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Johnson" autoFocus />
-        <label>Class</label>
-        <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+        <label htmlFor="onboarding-student-name">Full name</label>
+        <input id="onboarding-student-name" name="studentName" required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Johnson" autoFocus autoComplete="name" />
+        <label htmlFor="onboarding-student-class">Class</label>
+        <select id="onboarding-student-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
           {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label>Admission number (optional)</label>
-        <input value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} />
-        <label>Parent phone (optional)</label>
-        <input value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" />
+        <label htmlFor="onboarding-student-admission-no">Admission number (optional)</label>
+        <input id="onboarding-student-admission-no" name="admissionNo" value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} autoComplete="off" />
+        <label htmlFor="onboarding-student-guardian-contact">Parent phone (optional)</label>
+        <input id="onboarding-student-guardian-contact" name="guardianContact" value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} placeholder="e.g. 0803 123 4567" inputMode="tel" autoComplete="tel" />
         <div className="action-row">
           <button type="button" className="btn-ghost" onClick={onBack}>← Back</button>
           <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={busy || !name.trim()}>
@@ -293,11 +293,15 @@ function Step4AssignFees({ student, feeHeads, termId, onNext, onBack, onError })
               <td>{h.name}</td>
               <td className="num">
                 <input
+                  id={`onboarding-fee-${h.id}`}
+                  name={`feeAmount-${h.id}`}
                   value={assignments[h.id]}
                   onChange={(e) => setAssignments((a) => ({ ...a, [h.id]: e.target.value.replace(/[^0-9.]/g, "") }))}
                   placeholder="0"
                   inputMode="decimal"
                   style={{ width: 140, textAlign: "right" }}
+                  autoComplete="off"
+                  aria-label={`Expected amount for ${h.name}`}
                 />
               </td>
             </tr>

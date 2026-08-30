@@ -45,10 +45,10 @@ export default function Login() {
           </div>
         )}
         {error && <div className="form-error">{error}</div>}
-        <label>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label>Password</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+        <label htmlFor="login-email">Email</label>
+        <input id="login-email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+        <label htmlFor="login-password">Password</label>
+        <input id="login-password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         <button type="submit" className="btn-primary" disabled={busy}>{busy ? "Signing in..." : "Sign in"}</button>
         <div className="auth-switch">No account yet? <Link to="/register">Register your school</Link></div>
         <div className="auth-switch"><Link to="/forgot-password">Forgot password?</Link></div>

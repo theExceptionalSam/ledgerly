@@ -179,13 +179,16 @@ function TwoFASection() {
               Can't scan? Enter this secret manually: <code>{setup.secret}</code>
             </div>
           </div>
-          <label>Enter the 6-digit code from your app</label>
+          <label htmlFor="two-factor-token">Enter the 6-digit code from your app</label>
           <input
+            id="two-factor-token"
+            name="otp"
             value={token}
             onChange={(e) => setToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
             inputMode="numeric"
             placeholder="123456"
             autoFocus
+            autoComplete="one-time-code"
           />
           <div className="action-row">
             <button className="btn-primary" disabled={busy || token.length !== 6} onClick={verify}>
@@ -413,16 +416,19 @@ function CreateKeyModal({ onClose, onCreated }) {
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         {error && <div className="form-error">{error}</div>}
-        <label>Key name</label>
+        <label htmlFor="api-key-name">Key name</label>
         <input
+          id="api-key-name"
+          name="keyName"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Webhook sync · Zapier"
           autoFocus
+          autoComplete="off"
         />
         <div className="field-hint">A label so you remember what this key is for.</div>
-        <label>Permissions</label>
-        <select value={permissions} onChange={(e) => setPermissions(e.target.value)}>
+        <label htmlFor="api-key-permissions">Permissions</label>
+        <select id="api-key-permissions" name="permissions" value={permissions} onChange={(e) => setPermissions(e.target.value)}>
           <option value="read">Read only (recommended)</option>
           <option value="read_write">Read &amp; write</option>
           <option value="admin">Admin (full access)</option>

@@ -94,14 +94,14 @@ export default function Settings() {
           <div className="card" style={{ marginBottom: 18 }}>
             <div className="card-title">Regional defaults</div>
 
-            <label>Currency</label>
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <label htmlFor="settings-currency">Currency</label>
+            <select id="settings-currency" name="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
             <div className="field-hint">Display currency for amounts throughout the app.</div>
 
-            <label>Language</label>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <label htmlFor="settings-language">Language</label>
+            <select id="settings-language" name="language" value={language} onChange={(e) => setLanguage(e.target.value)}>
               {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
             </select>
             <div className="field-hint">UI language preference (English is fully translated; others are partial).</div>
@@ -110,15 +110,20 @@ export default function Settings() {
           <div className="card" style={{ marginBottom: 18 }}>
             <div className="card-title">White-label branding</div>
 
-            <label>Primary color</label>
+            <label htmlFor="settings-primary-color">Primary color</label>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <input
+                id="settings-primary-color"
+                name="primaryColor"
                 type="color"
                 value={primaryColor}
                 onChange={(e) => setPrimaryColor(e.target.value)}
                 style={{ width: 56, height: 44, padding: 4, cursor: "pointer" }}
+                aria-label="Primary color picker"
               />
               <input
+                id="settings-primary-color-hex"
+                name="primaryColorHex"
                 value={primaryColor}
                 onChange={(e) => {
                   let v = e.target.value;
@@ -128,6 +133,8 @@ export default function Settings() {
                 style={{ flex: 1, maxWidth: 200, fontFamily: "monospace" }}
                 placeholder="#14213D"
                 maxLength={7}
+                autoComplete="off"
+                aria-label="Primary color hex value"
               />
               <button
                 className="btn-ghost"
@@ -139,24 +146,30 @@ export default function Settings() {
             </div>
             <div className="field-hint">Used on receipts and the parent portal header. Hex format #RRGGBB.</div>
 
-            <label>Parent company</label>
+            <label htmlFor="settings-parent-company">Parent company</label>
             <input
+              id="settings-parent-company"
+              name="parentCompany"
               value={parentCompany}
               onChange={(e) => setParentCompany(e.target.value)}
               placeholder="e.g. Acme Education Holdings"
               maxLength={200}
+              autoComplete="organization"
             />
             <div className="field-hint">Optional. Shown as the operating company on receipts and invoices.</div>
           </div>
 
           <div className="card" style={{ marginBottom: 18 }}>
             <div className="card-title">Custom domain</div>
-            <label>Domain</label>
+            <label htmlFor="settings-domain">Domain</label>
             <input
+              id="settings-domain"
+              name="customDomain"
               value={customDomain}
               readOnly
               placeholder="Not configured"
               style={{ background: "#FBFBF9", color: "#5B5B54" }}
+              autoComplete="off"
             />
             <div className="field-hint">
               Read-only. Custom domains are configured via DNS verification —

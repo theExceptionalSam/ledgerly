@@ -149,10 +149,10 @@ function AddSessionModal({ onClose, onSave }) {
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><div className="modal-title">New academic session</div><button className="modal-close" onClick={onClose}>✕</button></div>
         {error && <div className="form-error">{error}</div>}
-        <label>Session name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. 2025/2026 Session" autoFocus />
+        <label htmlFor="session-name">Session name</label>
+        <input id="session-name" name="sessionName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. 2025/2026 Session" autoFocus autoComplete="off" />
         <label className="checkbox-row">
-          <input type="checkbox" checked={setCurrent} onChange={(e) => setSetCurrent(e.target.checked)} />
+          <input id="session-set-current" name="setCurrent" type="checkbox" checked={setCurrent} onChange={(e) => setSetCurrent(e.target.checked)} />
           Make this the current session
         </label>
         <button className="btn-primary btn-full" disabled={!name || busy} onClick={submit}>
@@ -183,18 +183,18 @@ function AddTermModal({ sessions, onClose, onSave }) {
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><div className="modal-title">New academic term</div><button className="modal-close" onClick={onClose}>✕</button></div>
         {error && <div className="form-error">{error}</div>}
-        <label>Session</label>
-        <select value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
+        <label htmlFor="term-session">Session</label>
+        <select id="term-session" name="sessionId" value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
           {sessions.map((s) => <option key={s.id} value={s.id}>{s.name}{s.is_current ? " (current)" : ""}</option>)}
         </select>
-        <label>Term name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. First Term" autoFocus />
-        <label>Start date (optional)</label>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <label>End date (optional)</label>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        <label htmlFor="term-name">Term name</label>
+        <input id="term-name" name="termName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. First Term" autoFocus autoComplete="off" />
+        <label htmlFor="term-start-date">Start date (optional)</label>
+        <input id="term-start-date" name="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} autoComplete="off" />
+        <label htmlFor="term-end-date">End date (optional)</label>
+        <input id="term-end-date" name="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} autoComplete="off" />
         <label className="checkbox-row">
-          <input type="checkbox" checked={setCurrent} onChange={(e) => setSetCurrent(e.target.checked)} />
+          <input id="term-set-current" name="setCurrent" type="checkbox" checked={setCurrent} onChange={(e) => setSetCurrent(e.target.checked)} />
           Make this the current term
         </label>
         <button className="btn-primary btn-full" disabled={!name || !sessionId || busy} onClick={submit}>
@@ -228,12 +228,12 @@ function EditTermModal({ term, onClose, onSave }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         {error && <div className="form-error">{error}</div>}
-        <label>Term name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        <label>Start date (optional)</label>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <label>End date (optional)</label>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        <label htmlFor="edit-term-name">Term name</label>
+        <input id="edit-term-name" name="termName" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="off" />
+        <label htmlFor="edit-term-start-date">Start date (optional)</label>
+        <input id="edit-term-start-date" name="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} autoComplete="off" />
+        <label htmlFor="edit-term-end-date">End date (optional)</label>
+        <input id="edit-term-end-date" name="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} autoComplete="off" />
         <button className="btn-primary btn-full" disabled={!name.trim() || busy} onClick={submit}>
           {busy ? "Saving..." : "Save changes"}
         </button>

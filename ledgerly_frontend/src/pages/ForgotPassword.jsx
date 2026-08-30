@@ -35,8 +35,8 @@ export default function ForgotPassword() {
           <>
             <p className="auth-sub">Enter your email and we'll send you a link to reset your password.</p>
             {error && <div className="form-error">{error}</div>}
-            <label>Email</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus />
+            <label htmlFor="forgot-email">Email</label>
+            <input id="forgot-email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus />
             <button type="submit" className="btn-primary" disabled={busy}>{busy ? "Sending..." : "Send reset link"}</button>
             <div className="auth-switch">Remembered it? <Link to="/login">Sign in</Link></div>
           </>

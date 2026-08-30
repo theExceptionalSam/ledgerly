@@ -165,8 +165,10 @@ function ParentLogin({ onSignedIn }) {
           <h1>Register as parent</h1>
           <p className="auth-sub">Create your parent portal account to view your child's fees and pay online.</p>
           {error && <div className="form-error">{error}</div>}
-          <label>Full name</label>
+          <label htmlFor="parent-register-name">Full name</label>
           <input
+            id="parent-register-name"
+            name="name"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -174,8 +176,10 @@ function ParentLogin({ onSignedIn }) {
             autoComplete="name"
             autoFocus
           />
-          <label>Phone number</label>
+          <label htmlFor="parent-register-phone">Phone number</label>
           <input
+            id="parent-register-phone"
+            name="phone"
             required
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -184,8 +188,10 @@ function ParentLogin({ onSignedIn }) {
             autoComplete="tel"
           />
           <div className="field-hint">Must match the phone number the school has on file for your child.</div>
-          <label>Password</label>
+          <label htmlFor="parent-register-password">Password</label>
           <input
+            id="parent-register-password"
+            name="password"
             type="password"
             required
             minLength={8}
@@ -194,13 +200,16 @@ function ParentLogin({ onSignedIn }) {
             placeholder="At least 8 characters"
             autoComplete="new-password"
           />
-          <label>Child's admission number</label>
+          <label htmlFor="parent-register-admission-no">Child's admission number</label>
           <input
+            id="parent-register-admission-no"
+            name="admissionNo"
             required
             value={admissionNo}
             onChange={(e) => setAdmissionNo(e.target.value)}
             placeholder="e.g. LED/2024/001"
             autoFocus={false}
+            autoComplete="off"
           />
           <div className="field-hint">The admission number printed on your child's report card or fee bill.</div>
           <button type="submit" className="btn-primary" disabled={busy}>
@@ -232,8 +241,10 @@ function ParentLogin({ onSignedIn }) {
         <h1>Parent portal</h1>
         <p className="auth-sub">Sign in to view your child's fees and pay online.</p>
         {error && <div className="form-error">{error}</div>}
-        <label>Phone number</label>
+        <label htmlFor="parent-login-phone">Phone number</label>
         <input
+          id="parent-login-phone"
+          name="phone"
           required
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
@@ -242,8 +253,10 @@ function ParentLogin({ onSignedIn }) {
           autoComplete="tel"
           autoFocus
         />
-        <label>Password</label>
+        <label htmlFor="parent-login-password">Password</label>
         <input
+          id="parent-login-password"
+          name="password"
           type="password"
           required
           value={password}
@@ -608,12 +621,15 @@ function LinkChildModal({ token, onClose, onLinked }) {
           Enter your child's admission number. Your phone number must be registered
           as their guardian contact at the school.
         </p>
-        <label>Admission number</label>
+        <label htmlFor="link-child-admission-no">Admission number</label>
         <input
+          id="link-child-admission-no"
+          name="admissionNo"
           value={admissionNo}
           onChange={(e) => setAdmissionNo(e.target.value)}
           placeholder="e.g. ADM/2026/001"
           autoFocus
+          autoComplete="off"
         />
         <button className="btn-primary btn-full" disabled={busy || !admissionNo.trim()} onClick={submit}>
           {busy ? "Linking..." : "Link child"}
@@ -688,13 +704,16 @@ function PayModal({ student, fee, parentPhone, token, onClose, onPaid }) {
             <div className="field-hint" style={{ marginTop: 0 }}>
               {fee.fee_head_name} · Outstanding {naira(fee.outstanding)}
             </div>
-            <label>Amount to pay (₦)</label>
+            <label htmlFor="parent-pay-amount">Amount to pay (₦)</label>
             <input
+              id="parent-pay-amount"
+              name="amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
               inputMode="decimal"
               placeholder="0"
               autoFocus
+              autoComplete="off"
             />
             <div className="field-hint">You can pay in part or in full. Receipts are issued automatically once payment is confirmed.</div>
             <button type="submit" className="btn-primary btn-full" disabled={busy}>

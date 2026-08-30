@@ -293,17 +293,23 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
               <div className="card-title" style={{ margin: 0 }}>Tenant list ({filtered.length})</div>
               <div className="toolbar-actions">
                 <input
+                  id="admin-tenant-search"
+                  name="tenantSearch"
                   className="search-input"
                   type="search"
                   placeholder="Search by school name…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   style={{ width: 220 }}
+                  autoComplete="off"
                 />
                 <select
+                  id="admin-tenant-health-filter"
+                  name="healthFilter"
                   value={healthFilter}
                   onChange={(e) => setHealthFilter(e.target.value)}
                   style={{ padding: "8px 12px" }}
+                  aria-label="Filter tenants by health"
                 >
                   <option value="all">All health</option>
                   <option value="green">🟢 Green</option>
@@ -391,6 +397,8 @@ function OverviewTab({ token, overview, health, loading, onRefresh, onImpersonat
               Internal notes about this tenant — visible only to platform admins.
             </p>
             <textarea
+              id="admin-tenant-notes"
+              name="notes"
               rows={6}
               value={notesText}
               onChange={(e) => setNotesText(e.target.value)}
@@ -755,8 +763,10 @@ function BroadcastsTab({ token, tenants }) {
       <div className="card">
         <div className="card-title">New broadcast</div>
         <form onSubmit={submit}>
-          <label>Message</label>
+          <label htmlFor="broadcast-message">Message</label>
           <textarea
+            id="broadcast-message"
+            name="message"
             rows={3}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -767,16 +777,16 @@ function BroadcastsTab({ token, tenants }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
             <div>
-              <label>Level</label>
-              <select value={level} onChange={(e) => setLevel(e.target.value)}>
+              <label htmlFor="broadcast-level">Level</label>
+              <select id="broadcast-level" name="level" value={level} onChange={(e) => setLevel(e.target.value)}>
                 {BROADCAST_LEVELS.map((l) => (
                   <option key={l.value} value={l.value}>{l.label}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label>Tenant (optional — leave empty for all)</label>
-              <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+              <label htmlFor="broadcast-tenant">Tenant (optional — leave empty for all)</label>
+              <select id="broadcast-tenant" name="tenantId" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
                 <option value="">All tenants</option>
                 {(tenants || []).map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
@@ -909,8 +919,8 @@ function FeatureFlagsTab({ token, tenants }) {
         <form onSubmit={submit}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label>Tenant</label>
-              <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+              <label htmlFor="feature-flag-tenant">Tenant</label>
+              <select id="feature-flag-tenant" name="tenantId" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
                 <option value="">Select tenant…</option>
                 {(tenants || []).map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
@@ -918,17 +928,20 @@ function FeatureFlagsTab({ token, tenants }) {
               </select>
             </div>
             <div>
-              <label>Feature name</label>
+              <label htmlFor="feature-flag-name">Feature name</label>
               <input
+                id="feature-flag-name"
+                name="feature"
                 type="text"
                 value={feature}
                 onChange={(e) => setFeature(e.target.value)}
                 placeholder="e.g. sms_reminders, bulk_import…"
+                autoComplete="off"
               />
             </div>
           </div>
           <label className="checkbox-row">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <input id="feature-flag-enabled" name="enabled" type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Enabled
           </label>
           <button type="submit" className="btn-primary" disabled={saving}>
@@ -1252,16 +1265,20 @@ export default function PlatformAdmin() {
           <h1>Platform admin</h1>
           <p className="auth-sub">Operator dashboard for the Ledgerly platform. Separate credentials from school accounts.</p>
           {error && <div className="form-error">{error}</div>}
-          <label>Email</label>
+          <label htmlFor="platform-admin-email">Email</label>
           <input
+            id="platform-admin-email"
+            name="email"
             type="email"
             required
             value={emailInput}
             onChange={(e) => setEmailInput(e.target.value)}
             autoComplete="email"
           />
-          <label>Access token</label>
+          <label htmlFor="platform-admin-token">Access token</label>
           <input
+            id="platform-admin-token"
+            name="accessToken"
             type="password"
             required
             value={accessTokenInput}

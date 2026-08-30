@@ -42,19 +42,19 @@ export default function RegisterSchool() {
         <h1>Register your school</h1>
         <p className="auth-sub">Creates your school's account and your owner login.</p>
         {error && <div className="form-error">{error}</div>}
-        <label>School name</label>
-        <input required value={fields.schoolName} onChange={update("schoolName")} />
-        <label>Your name</label>
-        <input required value={fields.ownerName} onChange={update("ownerName")} />
-        <label>School phone number</label>
-        <input required value={fields.phone} onChange={update("phone")} placeholder="e.g. 0803 123 4567" inputMode="tel" autoComplete="tel" />
-        <label>Email</label>
-        <input type="email" required value={fields.email} onChange={update("email")} autoComplete="email" />
-        <label>Password</label>
-        <input type="password" required value={fields.password} onChange={update("password")} autoComplete="new-password" />
+        <label htmlFor="register-school-name">School name</label>
+        <input id="register-school-name" name="schoolName" required value={fields.schoolName} onChange={update("schoolName")} autoComplete="organization" />
+        <label htmlFor="register-owner-name">Your name</label>
+        <input id="register-owner-name" name="ownerName" required value={fields.ownerName} onChange={update("ownerName")} autoComplete="name" />
+        <label htmlFor="register-phone">School phone number</label>
+        <input id="register-phone" name="phone" required value={fields.phone} onChange={update("phone")} placeholder="e.g. 0803 123 4567" inputMode="tel" autoComplete="tel" />
+        <label htmlFor="register-email">Email</label>
+        <input id="register-email" name="email" type="email" required value={fields.email} onChange={update("email")} autoComplete="email" />
+        <label htmlFor="register-password">Password</label>
+        <input id="register-password" name="password" type="password" required value={fields.password} onChange={update("password")} autoComplete="new-password" />
         <div className="field-hint">At least 10 characters, with an uppercase letter and a number.</div>
-        <label>Confirm password</label>
-        <input type="password" required value={fields.confirmPassword} onChange={update("confirmPassword")} autoComplete="new-password" />
+        <label htmlFor="register-confirm-password">Confirm password</label>
+        <input id="register-confirm-password" name="confirmPassword" type="password" required value={fields.confirmPassword} onChange={update("confirmPassword")} autoComplete="new-password" />
         {mismatch && <div className="field-hint" style={{ color: "#B3261E" }}>Passwords do not match.</div>}
         <button type="submit" className="btn-primary" disabled={busy || mismatch}>{busy ? "Creating..." : "Create account"}</button>
         <div className="auth-switch">Already registered? <Link to="/login">Sign in</Link></div>

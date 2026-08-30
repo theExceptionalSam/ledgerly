@@ -125,6 +125,8 @@ export default function BrandingSettings() {
               <div style={{ flex: 1, minWidth: 220 }}>
                 <input
                   ref={fileRef}
+                  id="branding-logo-file"
+                  name="logo"
                   type="file"
                   accept="image/png,image/jpeg,image/gif,image/webp"
                   onChange={handleLogoChange}
@@ -145,8 +147,10 @@ export default function BrandingSettings() {
           {/* Receipt footer text */}
           <div className="card" style={{ marginBottom: 18 }}>
             <div className="card-title">Receipt footer text</div>
-            <label>Footer message (shown at the bottom of every receipt)</label>
+            <label htmlFor="branding-footer">Footer message (shown at the bottom of every receipt)</label>
             <textarea
+              id="branding-footer"
+              name="footer"
               rows={3}
               maxLength={200}
               value={footer}

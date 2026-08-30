@@ -114,16 +114,16 @@ function AddTransactionModal({ onClose, onSave }) {
             </button>
           ))}
         </div>
-        <label>Category</label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+        <label htmlFor="finance-category">Category</label>
+        <select id="finance-category" name="category" value={category} onChange={(e) => setCategory(e.target.value)}>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label>Amount</label>
-        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" />
-        <label>Date</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <label>Description (optional)</label>
-        <input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label htmlFor="finance-amount">Amount</label>
+        <input id="finance-amount" name="amount" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" inputMode="decimal" autoComplete="off" />
+        <label htmlFor="finance-date">Date</label>
+        <input id="finance-date" name="occurredOn" type="date" value={date} onChange={(e) => setDate(e.target.value)} autoComplete="off" />
+        <label htmlFor="finance-description">Description (optional)</label>
+        <input id="finance-description" name="description" value={description} onChange={(e) => setDescription(e.target.value)} autoComplete="off" />
         <button className="btn-primary btn-full" disabled={!amount || busy} onClick={submit}>
           {busy ? "Saving..." : "Save entry"}
         </button>

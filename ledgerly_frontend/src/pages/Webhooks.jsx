@@ -238,12 +238,15 @@ function CreateWebhookModal({ onClose, onDone }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <label>Endpoint URL (HTTPS recommended)</label>
+        <label htmlFor="webhook-url">Endpoint URL (HTTPS recommended)</label>
         <input
+          id="webhook-url"
+          name="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://your-server.com/ledgerly-webhook"
           autoFocus
+          autoComplete="url"
         />
         <div className="field-hint">Must be a valid http(s) URL. Ledgerly will POST event payloads here.</div>
 
@@ -252,6 +255,8 @@ function CreateWebhookModal({ onClose, onDone }) {
           {KNOWN_EVENTS.map((e) => (
             <label key={e.id} className="checkbox-row" style={{ margin: 0 }}>
               <input
+                id={`webhook-event-${e.id}`}
+                name={`event-${e.id}`}
                 type="checkbox"
                 checked={events.has(e.id)}
                 onChange={() => toggle(e.id)}
@@ -320,6 +325,8 @@ function EditEventsModal({ endpoint, onClose, onDone }) {
           {KNOWN_EVENTS.map((e) => (
             <label key={e.id} className="checkbox-row" style={{ margin: 0 }}>
               <input
+                id={`edit-webhook-event-${e.id}`}
+                name={`event-${e.id}`}
                 type="checkbox"
                 checked={events.has(e.id)}
                 onChange={() => toggle(e.id)}

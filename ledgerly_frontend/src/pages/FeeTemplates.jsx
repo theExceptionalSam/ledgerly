@@ -155,11 +155,11 @@ function CreateTemplateModal({ feeHeads, onClose, onDone }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <label>Template name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SS1 First Term Bundle" />
+        <label htmlFor="fee-template-name">Template name</label>
+        <input id="fee-template-name" name="templateName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SS1 First Term Bundle" autoComplete="off" />
 
-        <label>Class (optional — for reference only)</label>
-        <select value={className} onChange={(e) => setClassName(e.target.value)}>
+        <label htmlFor="fee-template-class">Class (optional — for reference only)</label>
+        <select id="fee-template-class" name="class" value={className} onChange={(e) => setClassName(e.target.value)}>
           <option value="">— Any class —</option>
           {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -168,19 +168,26 @@ function CreateTemplateModal({ feeHeads, onClose, onDone }) {
         {items.map((it, idx) => (
           <div key={idx} className="assign-fee-row">
             <select
+              id={`fee-template-item-head-${idx}`}
+              name={`feeHeadId-${idx}`}
               value={it.feeHeadId}
               onChange={(e) => setItem(idx, "feeHeadId", e.target.value)}
               style={{ flex: 2 }}
+              aria-label={`Fee head for item ${idx + 1}`}
             >
               <option value="">— Select fee head —</option>
               {feeHeads.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
             <input
+              id={`fee-template-item-amount-${idx}`}
+              name={`expectedAmount-${idx}`}
               value={it.expectedAmount}
               onChange={(e) => setItem(idx, "expectedAmount", e.target.value.replace(/[^0-9.]/g, ""))}
               placeholder="Amount ₦"
               inputMode="decimal"
               style={{ flex: 1, width: 140 }}
+              autoComplete="off"
+              aria-label={`Amount for item ${idx + 1}`}
             />
             {items.length > 1 && (
               <button className="tx-remove" onClick={() => removeItem(idx)} aria-label="Remove item">✕</button>
@@ -239,8 +246,8 @@ function ApplyTemplateModal({ template, onClose, onDone }) {
             <div className="field-hint">
               Bulk-assigns every fee item in this template to every active student in the selected class, for the current term.
             </div>
-            <label>Class</label>
-            <select value={klass} onChange={(e) => setKlass(e.target.value)}>
+            <label htmlFor="apply-template-class">Class</label>
+            <select id="apply-template-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
               {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <button className="btn-primary btn-full" disabled={busy} onClick={submit}>

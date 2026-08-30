@@ -36,15 +36,15 @@ export default function ResetPassword() {
         <h1>Set new password</h1>
         <p className="auth-sub">Enter your email, the reset token from your email, and your new password.</p>
         {error && <div className="form-error">{error}</div>}
-        <label>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label>Reset token</label>
-        <input required value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste the token from your email" />
-        <label>New password</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        <label htmlFor="reset-email">Email</label>
+        <input id="reset-email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+        <label htmlFor="reset-token">Reset token</label>
+        <input id="reset-token" name="token" required value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste the token from your email" autoComplete="off" />
+        <label htmlFor="reset-password">New password</label>
+        <input id="reset-password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         <div className="field-hint">At least 10 characters, with an uppercase letter and a number.</div>
-        <label>Confirm new password</label>
-        <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
+        <label htmlFor="reset-confirm-password">Confirm new password</label>
+        <input id="reset-confirm-password" name="confirmPassword" type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
         {mismatch && <div className="field-hint" style={{ color: "#B3261E" }}>Passwords do not match.</div>}
         <button type="submit" className="btn-primary" disabled={busy || mismatch}>{busy ? "Saving..." : "Set new password"}</button>
         <div className="auth-switch"><Link to="/login">Back to sign in</Link></div>

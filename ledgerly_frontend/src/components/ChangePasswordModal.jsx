@@ -75,8 +75,10 @@ export default function ChangePasswordModal({ onClose, forced, onSuccess }) {
           <>
             {error && <div className="form-error">{error}</div>}
 
-            <label>Current password</label>
+            <label htmlFor="change-password-current">Current password</label>
             <input
+              id="change-password-current"
+              name="currentPassword"
               type="password"
               required
               value={currentPassword}
@@ -85,8 +87,10 @@ export default function ChangePasswordModal({ onClose, forced, onSuccess }) {
               autoComplete="current-password"
             />
 
-            <label>New password</label>
+            <label htmlFor="change-password-new">New password</label>
             <input
+              id="change-password-new"
+              name="newPassword"
               type="password"
               required
               value={newPassword}
@@ -97,8 +101,10 @@ export default function ChangePasswordModal({ onClose, forced, onSuccess }) {
               {pwValid ? "✓ " : ""}At least 10 characters, with an uppercase letter and a number.
             </div>
 
-            <label>Confirm new password</label>
+            <label htmlFor="change-password-confirm">Confirm new password</label>
             <input
+              id="change-password-confirm"
+              name="confirmPassword"
               type="password"
               required
               value={confirmPassword}

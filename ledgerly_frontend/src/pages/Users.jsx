@@ -60,7 +60,7 @@ export default function Users() {
               <div className="user-actions">
                 {u.role !== "owner" && (
                   <>
-                    <select value={u.role} onChange={(e) => changeRole(u, e.target.value)}>
+                    <select id={`user-role-${u.id}`} name={`userRole-${u.id}`} value={u.role} onChange={(e) => changeRole(u, e.target.value)} aria-label={`Role for ${u.name}`}>
                       <option value="bursar">Bursar</option>
                       <option value="accountant">Accountant</option>
                       <option value="assistant">Assistant</option>
@@ -124,17 +124,17 @@ function AddUserModal({ onClose, onDone }) {
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         {error && <div className="form-error">{error}</div>}
-        <label>Full name</label>
-        <input required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        <label>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        <label>Temporary password</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        <label htmlFor="invite-user-name">Full name</label>
+        <input id="invite-user-name" name="name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="name" />
+        <label htmlFor="invite-user-email">Email</label>
+        <input id="invite-user-email" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+        <label htmlFor="invite-user-password">Temporary password</label>
+        <input id="invite-user-password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         <div className="field-hint" style={{ color: pwValid ? "#1B7A43" : "#6B6E72" }}>
           {pwValid ? "✓ " : ""}At least 10 characters, with an uppercase letter and a number.
         </div>
-        <label>Role</label>
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
+        <label htmlFor="invite-user-role">Role</label>
+        <select id="invite-user-role" name="role" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="bursar">Bursar</option>
           <option value="accountant">Accountant</option>
           <option value="assistant">Assistant</option>

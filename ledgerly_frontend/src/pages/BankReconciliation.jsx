@@ -180,6 +180,8 @@ export default function BankReconciliation() {
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <input
             ref={fileRef}
+            id="bank-statement-file"
+            name="statement"
             type="file"
             accept=".csv,text/csv"
             onChange={handleFile}
@@ -409,12 +411,15 @@ function MatchModal({ statementId, bankTransaction, onClose, onDone }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <label>Filter by amount, date, or note</label>
+        <label htmlFor="match-filter">Filter by amount, date, or note</label>
         <input
+          id="match-filter"
+          name="matchFilter"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="e.g. 50000 or Tuition or 2024-09"
           autoFocus
+          autoComplete="off"
         />
         <div className="field-hint">
           Showing unmatched payments only. Type a number to filter by amount,
