@@ -18,18 +18,25 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['app-icon.jpg'],
       manifest: false, // we already have public/manifest.json
+      // We register the SW manually in src/main.jsx (with aggressive cleanup
+      // of old SWs + caches) instead of using VitePWA's auto-injected
+      // registerSW.js. The auto-injected script doesn't clean up old SWs,
+      // which causes Samsung browsers to hold onto stale SWs that break
+      // API requests ("failed to fetch").
+      injectRegister: false,
       workbox: {
-        // Only cache static assets (JS/CSS/images), NOT the HTML. This ensures
-        // the browser always fetches a fresh index.html on navigation, which
-        // references the latest hashed JS/CSS bundles. Without this, Samsung
-        // browsers can get stuck serving a stale cached index.html that
-        // references bundles that no longer exist → blank page.
+        // Only cache static assets (JS/CSS/images), NOT the HTML and NOT the
+        // API. This ensures:
+        // 1. The browser always fetches a fresh index.html on navigation
+        //    (references the latest hashed JS/CSS bundles)
+        // 2. API requests (login, payments, etc.) are NEVER intercepted by the
+        //    service worker — they go straight to the network. This prevents
+        //    "failed to fetch" errors on Samsung browsers where the SW can
+        //    interfere with POST requests or strip Set-Cookie headers.
         globPatterns: ['**/*.{js,css,ico,png,jpg,svg}'],
-        // Don't use navigateFallback — this was the main cause of the Samsung
-        // blank-page issue. It served a cached index.html for ALL navigations,
-        // which meant new deploys never reached the user until the SW decided
-        // to update (which Samsung browsers delay aggressively).
         navigateFallback: null,
+        // Don't cache the Google Fonts API response either — only cache the
+        // actual font files (handled by the browser's HTTP cache automatically).
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -39,18 +46,10 @@ export default defineConfig({
               expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
-          {
-            // Cache the API GET requests for offline read (NetworkFirst with a
-            // 10s timeout so a slow network falls back to the cached response
-            // instead of hanging the UI).
-            urlPattern: /\/api\/v1\//i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-            },
-          },
+          // NOTE: API caching (/api/v1/) REMOVED — API responses must never be
+          // cached. They're dynamic data, and caching them causes stale-data
+          // bugs + "failed to fetch" errors on Samsung browsers when the SW
+          // interferes with POST requests.
         ],
       },
     }),
