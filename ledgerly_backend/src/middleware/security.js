@@ -31,7 +31,7 @@ const securityHeaders = helmet({
 // Strict limiter for authentication endpoints — slows down credential stuffing and brute force
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please wait before trying again.' },

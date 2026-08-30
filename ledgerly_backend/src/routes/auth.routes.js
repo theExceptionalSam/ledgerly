@@ -146,7 +146,7 @@ router.post('/reset-password', authLimiter, [
   strongPassword,
 ], validate, asyncHandler(ctrl.resetPassword));
 
-router.post('/refresh', authLimiter, asyncHandler(ctrl.refresh));
+router.post('/refresh', asyncHandler(ctrl.refresh));
 router.post('/logout', asyncHandler(ctrl.logout));
 router.post('/logout-all', requireAuth, asyncHandler(ctrl.logoutAll));
 router.get('/me', requireAuth, asyncHandler(ctrl.me));
