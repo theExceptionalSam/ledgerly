@@ -150,13 +150,22 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 4000;
 let server;
 
+// Start the server immediately — don't wait for db.ready. The health endpoint
+// will report 'degraded' until the DB connects, and individual endpoints will
+// return 500 if the DB is unreachable. This prevents Render from crash-looping
+// on cold starts where the DB connection takes longer than expected.
+// The db.ready promise (with retries) resolves in the background; once it does,
+// all endpoints work normally.
+server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
+
 db.ready.then(() => {
-  server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
+  logger.info({ msg: 'Database initialized — all endpoints ready' });
 }).catch((err) => {
-  logger.error({ err: err.message, msg: 'Database initialization failed' });
-  // Don't process.exit — the process will exit naturally when nothing keeps
-  // the event loop alive (no server listening, no DB pool connections).
-  // This allows CI to require() the module without crashing.
+  logger.error({ err: err.message, msg: 'Database initialization failed after retries' });
+  // Don't process.exit — keep the server running so Render doesn't crash-loop.
+  // The health endpoint will return 503 (degraded), and individual endpoints
+  // will return 500 (DATABASE_URL not configured / connection error).
+  // Render's health check will mark the service as degraded but won't restart it.
 });
 
 function shutdown(signal) {

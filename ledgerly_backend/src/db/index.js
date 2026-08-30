@@ -45,11 +45,14 @@ const pool = new Pool({
   connectionString,
   ssl: sslConfig,
   // Pool sizing: 20 conns is enough for ~200 concurrent requests at typical
-  // query latency (~50ms). Connection timeout is short so a stuck pool fails
-  // fast instead of queuing requests; idle conns are reaped quickly to avoid
-  // holding database-side slots open during quiet periods.
+  // query latency (~50ms). Connection timeout is generous (30s) because
+  // Render's free tier can take 10-20s to establish the first DB connection
+  // after a cold start (the server hibernates, the first request wakes it up,
+  // and the DB pool needs to establish a fresh TLS connection to Supabase).
+  // The old 5s timeout caused 'Connection terminated due to connection timeout'
+  // crashes on every cold start.
   max: 20,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
   // Supabase/Render poolers use PgBouncer in transaction mode, which breaks
   // prepared statements. Disable them for broad compatibility.
@@ -122,8 +125,31 @@ async function init() {
   }
 }
 
-const ready = init().catch((err) => {
-  console.error('[db] Initialization failed:', err.message);
+// Retry the init() function up to 5 times with a 3s delay between attempts.
+// This handles Render free-tier cold starts where the first DB connection
+// attempt can fail (network/DNS not ready yet) but subsequent attempts succeed.
+async function initWithRetries(maxRetries = 5, delayMs = 3000) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[db] Init attempt ${attempt}/${maxRetries}...`);
+      await init();
+      console.log('[db] Initialization successful');
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.error(`[db] Init attempt ${attempt} failed: ${err.message}`);
+      if (attempt < maxRetries) {
+        console.log(`[db] Retrying in ${delayMs / 1000}s...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+const ready = initWithRetries().catch((err) => {
+  console.error('[db] Initialization failed after all retries:', err.message);
   throw err;
 });
 
