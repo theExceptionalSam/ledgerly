@@ -143,8 +143,12 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, { explorer: true })
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
-// Sentry error handler must be before the custom error handler
-if (Sentry) app.use(Sentry.Handlers.errorHandler());
+// Sentry error handler must be before the custom error handler.
+// @sentry/node v10+ uses setupExpressErrorHandler(app) instead of the old
+// Handlers.errorHandler() / Handlers.requestHandler() pattern. This sets up
+// both the request handler (adds tracing context) and the error handler
+// (captures unhandled errors) in one call.
+if (Sentry) Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
