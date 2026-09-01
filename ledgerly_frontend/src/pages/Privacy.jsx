@@ -11,7 +11,7 @@ export default function Privacy() {
   return (
     <div className="legal-page">
       <header className="legal-header">
-        <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+        <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         <h1>Privacy Policy</h1>
         <p className="legal-sub">Last updated: {new Date().getFullYear()}</p>
       </header>

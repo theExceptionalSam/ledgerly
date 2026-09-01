@@ -1257,10 +1257,10 @@ export default function PlatformAdmin() {
   // ----- Login screen -----
   if (!authed) {
     return (
-      <div className="auth-page">
+      <div className="auth-page" role="main">
         <form className="auth-card" onSubmit={submit}>
           <div className="auth-logo-block">
-            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
           </div>
           <h1>Platform admin</h1>
           <p className="auth-sub">Operator dashboard for the Ledgerly platform. Separate credentials from school accounts.</p>

@@ -157,10 +157,10 @@ function ParentLogin({ onSignedIn }) {
 
   if (mode === "register") {
     return (
-      <div className="auth-page">
+      <div className="auth-page" role="main">
         <form className="auth-card" onSubmit={submitRegister}>
           <div className="auth-logo-block">
-            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
           </div>
           <h1>Register as parent</h1>
           <p className="auth-sub">Create your parent portal account to view your child's fees and pay online.</p>
@@ -233,10 +233,10 @@ function ParentLogin({ onSignedIn }) {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" role="main">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+          <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         </div>
         <h1>Parent portal</h1>
         <p className="auth-sub">Sign in to view your child's fees and pay online.</p>

@@ -1,0 +1,15 @@
+# Ledgerly — School Fee Management
+# Allow all crawlers access to public pages
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /security
+Disallow: /settings
+Disallow: /data-requests
+Disallow: /webhooks
+Disallow: /bank-reconciliation
+Disallow: /audit-log
+Disallow: /users
+
+# Sitemap
+Sitemap: https://ledgerly-xi-ochre.vercel.app/sitemap.xml

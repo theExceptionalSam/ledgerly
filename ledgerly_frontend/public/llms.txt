@@ -1,0 +1,23 @@
+# Ledgerly
+
+> School fee and financial management SaaS for Nigerian schools. Track fee payments, issue receipts, manage students, and collect fees faster.
+
+## Key Pages
+
+- [Login](https://ledgerly-xi-ochre.vercel.app/login)
+- [Register your school](https://ledgerly-xi-ochre.vercel.app/register)
+- [Pricing](https://ledgerly-xi-ochre.vercel.app/pricing)
+- [Parent Portal](https://ledgerly-xi-ochre.vercel.app/parent)
+- [Privacy Policy](https://ledgerly-xi-ochre.vercel.app/privacy)
+- [Terms of Service](https://ledgerly-xi-ochre.vercel.app/terms)
+
+## Features
+
+- Student fee tracking per term
+- Instant PDF receipt generation
+- Parent portal for online fee payment
+- Real-time financial dashboard
+- Bulk student import from Excel
+- Multi-user access (owner, bursar, accountant)
+- Audit log for financial integrity
+- Works on mobile, tablet, and desktop

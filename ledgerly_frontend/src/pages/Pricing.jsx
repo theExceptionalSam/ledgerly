@@ -109,7 +109,7 @@ export default function Pricing() {
   return (
     <div className="legal-page pricing-page">
       <header className="legal-header">
-        <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" />
+        <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         <h1>Simple pricing for every school</h1>
         <p className="legal-sub">
           Start free. Upgrade when you're ready to accept online payments or scale beyond 50 students.
