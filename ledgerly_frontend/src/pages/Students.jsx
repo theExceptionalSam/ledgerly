@@ -151,6 +151,19 @@ export default function Students() {
     } catch (e) { setError(e.message); }
   };
 
+  // Mirror of bulkArchive for the archived view — flips multiple archived
+  // students back to 'active' in a single call. Backend: POST /students/bulk/restore.
+  const bulkRestore = async () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`Restore ${ids.length} archived student${ids.length === 1 ? "" : "s"} back to active records?`)) return;
+    try {
+      await api.post("/students/bulk/restore", { ids });
+      setSelected(new Set());
+      load();
+    } catch (e) { setError(e.message); }
+  };
+
   const addStudent = async (fields) => {
     try {
       const res = await api.post("/students", fields);
@@ -314,10 +327,14 @@ export default function Students() {
             </div>
           </div>
 
-          {!viewArchived && canDelete && selected.size > 0 && (
+          {canDelete && selected.size > 0 && (
             <div className="bulk-bar">
               <span>{selected.size} selected</span>
-              <button className="btn-danger-ghost" onClick={bulkArchive}>Remove selected</button>
+              {viewArchived ? (
+                <button className="btn-primary" onClick={bulkRestore}>Restore selected</button>
+              ) : (
+                <button className="btn-danger-ghost" onClick={bulkArchive}>Remove selected</button>
+              )}
               <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
             </div>
           )}
@@ -336,6 +353,15 @@ export default function Students() {
                   <span className="chip-count">{counts[f]}</span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {viewArchived && canDelete && filtered.length > 0 && (
+            <div className="filter-row">
+              <label className="select-all-chip">
+                <input id="students-select-all" name="selectAll" type="checkbox" checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))} onChange={toggleSelectAll} />
+                Select all
+              </label>
             </div>
           )}
 
@@ -382,7 +408,7 @@ export default function Students() {
               return (
                 <div key={s.id} className="list-item">
                   <div className="list-item-row">
-                    {canDelete && !viewArchived && (
+                    {canDelete && (
                       <input
                         id={`student-select-${s.id}`}
                         name={`studentSelect-${s.id}`}

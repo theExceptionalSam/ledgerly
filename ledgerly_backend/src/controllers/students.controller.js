@@ -27,7 +27,14 @@ async function resolveTermId(tenantId, termId) {
 //
 // Returns the number of fee assignments created (0 if the class had no
 // existing assignments or there's no current term).
-async function autoSyncClassFees(tenantId, studentId, klass) {
+//
+// BUGFIX: the student_fee_assignments table has `created_by TEXT NOT NULL`
+// (no default) — the previous INSERT omitted it, so every replication was
+// silently failing with a not-null violation (caught & logged in bulkUpload,
+// thrown as a 500 from createStudent AFTER the student row had already been
+// inserted). We now thread `actorUserId` through and write it into the
+// replicated rows.
+async function autoSyncClassFees(tenantId, studentId, klass, actorUserId) {
   if (!klass) return 0;
   const termId = await resolveTermId(tenantId, null);
   if (!termId) return 0;
@@ -62,9 +69,9 @@ async function autoSyncClassFees(tenantId, studentId, klass) {
     if (existing[0]) continue;
 
     await db.query(
-      `INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, discount_amount, discount_reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [randomUUID(), tenantId, studentId, t.fee_head_id, termId, t.expected_amount, t.discount_amount || 0, t.discount_reason || null]
+      `INSERT INTO student_fee_assignments (id, tenant_id, student_id, fee_head_id, term_id, expected_amount, discount_amount, discount_reason, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [randomUUID(), tenantId, studentId, t.fee_head_id, termId, t.expected_amount, t.discount_amount || 0, t.discount_reason || null, actorUserId]
     );
     created++;
   }
@@ -75,7 +82,6 @@ async function listStudents(req, res) {
   const { tenantId } = req.user;
   const termId = await resolveTermId(tenantId, req.query.termId);
   const showArchived = req.query.status === 'archived';
-  if (!termId && !showArchived) return res.json({ students: [], total: 0 });
 
   // --- Archived view (no pagination needed — archived lists are small) ---
   if (showArchived) {
@@ -90,9 +96,24 @@ async function listStudents(req, res) {
 
   // --- Active view with pagination ---
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const pageSize = Math.min(parseInt(req.query.pageSize, 10) || 50, 200);
+  // Allow up to 500 students per page so dropdowns (e.g. PaymentPlans "New
+  // plan" → student select) can fetch all active students in one request.
+  // The previous cap of 200 silently truncated tenants with >200 students,
+  // so the dropdown appeared "missing" students. 500 covers even large
+  // schools while still bounding the query cost.
+  const pageSize = Math.min(parseInt(req.query.pageSize, 10) || 50, 500);
   const offset = (page - 1) * pageSize;
   const search = req.query.search;
+
+  // NOTE: when there is no current term (and no termId query param), termId
+  // is null. We do NOT early-return an empty list — that previously made the
+  // PaymentPlans student dropdown appear empty for tenants that hadn't yet
+  // marked a term as current, even though they had active students. Instead
+  // we fall through: the COALESCE subqueries below return 0 for the
+  // expected/paid aggregates when termId is null (NULL = anything is never
+  // true in SQL), so the rows still come back, just with zeroed balances.
+  // The Students page already handles the "no current term" case by showing
+  // status='unset', which matches this behaviour.
 
   // Build the WHERE clause for search (server-side, case-insensitive)
   let searchSql = '';
@@ -151,8 +172,19 @@ async function createStudent(req, res) {
   `, [id, tenantId, name, klass, admissionNo || null, guardianContact || null, userId]);
 
   // Auto-sync fees: replicate the fee assignments that other students in the
-  // same class already have for the current term.
-  const feesSynced = await autoSyncClassFees(tenantId, id, klass);
+  // same class already have for the current term. Non-fatal — if sync fails
+  // (e.g. no current term, or no other students in the class have fees yet),
+  // the student is still created; feesSynced comes back as 0 and the user can
+  // set up fees manually later. Wrapped in try/catch so a transient DB error
+  // here doesn't 500 the whole createStudent call (which would leave the
+  // student row orphaned — it's already been INSERTed above with no
+  // transaction).
+  let feesSynced = 0;
+  try {
+    feesSynced = await autoSyncClassFees(tenantId, id, klass, userId);
+  } catch (e) {
+    console.error('[createStudent] autoSyncClassFees failed for', id, ':', e.message);
+  }
 
   await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: feesSynced > 0 ? { feesAutoSynced: feesSynced } : undefined });
   res.status(201).json({ id, feesSynced });
@@ -227,6 +259,32 @@ async function bulkArchiveStudents(req, res) {
     await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student_bulk', ipAddress: req.ip, metadata: { archived } });
   }
   res.json({ archived });
+}
+
+// Bulk restore — flips multiple archived students back to 'active' in a single
+// UPDATE. Mirrors bulkArchiveStudents. Financial history is untouched; the
+// students simply reappear in the active list.
+async function bulkRestoreStudents(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No student IDs provided' });
+  }
+
+  let restored = 0;
+  await db.transaction(async (client) => {
+    const result = await db.query(
+      `UPDATE students SET status = 'active' WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'archived'`,
+      [ids, tenantId], client
+    );
+    restored = result.rowCount;
+  });
+
+  if (restored > 0) {
+    await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student_bulk', entityId: null, ipAddress: req.ip, metadata: { restored } });
+  }
+  res.json({ restored });
 }
 
 async function getStudentDetail(req, res) {
@@ -373,4 +431,4 @@ async function applyDiscount(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount, autoSyncClassFees };
+module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, bulkRestoreStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount, autoSyncClassFees };

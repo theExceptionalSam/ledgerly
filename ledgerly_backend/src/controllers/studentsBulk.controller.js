@@ -115,10 +115,12 @@ async function bulkUpload(req, res) {
   // that other active students in the same class already have for the current
   // term. Runs after the INSERT so the students exist in the DB. Errors here
   // are non-fatal — the students are already inserted; we just log and continue.
+  // The actorUserId is threaded through so the replicated rows can populate
+  // the NOT NULL `created_by` column.
   let feesSynced = 0;
   for (const { id, klass } of insertedWithClass) {
     try {
-      feesSynced += await autoSyncClassFees(tenantId, id, klass);
+      feesSynced += await autoSyncClassFees(tenantId, id, klass, userId);
     } catch (e) {
       // Non-fatal — student is already inserted, just couldn't sync fees.
       console.error('[bulkUpload] autoSyncClassFees failed for', id, ':', e.message);

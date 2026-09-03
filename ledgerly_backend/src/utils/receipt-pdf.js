@@ -196,10 +196,12 @@ function capitalizeMethod(method) {
  * @param {string} opts.receiptNumber           e.g. "LHA-2026-00042".
  * @param {string} opts.termName                e.g. "First Term".
  * @param {string} opts.recordedByName          Staff who recorded the payment.
- * @param {{logoPath?:string, footerText?:string}} [opts.branding]
- *   Optional tenant branding. `logoPath` is resolved relative to the backend
- *   root (src/utils → ../..); if the file exists and is a supported image
- *   format it is rendered in the header band. `footerText` is rendered as an
+ * @param {{logoDataUrl?:string, footerText?:string}} [opts.branding]
+ *   Optional tenant branding. `logoDataUrl` is a base64 data URL
+ *   (e.g. "data:image/png;base64,...") stored on the tenant row — we decode it
+ *   to a Buffer and pass it straight to pdfkit so the logo is embedded in the
+ *   PDF rather than streamed from disk (which would be lost on Render's
+ *   ephemeral filesystem between deploys). `footerText` is rendered as an
  *   extra centered line in the footer area (between the disclaimer and the
  *   "Powered by Ledgerly" SaaS branding line).
  * @returns {Promise<Buffer>}
@@ -238,16 +240,17 @@ function generateReceiptPdf({
       const method = (payment && payment.method) || '';
 
       // ---- Resolve tenant branding (logo + custom footer text) ------------
-      // The logo path is stored on the tenant row (e.g. "/data/logos/abc.png")
-      // and is resolved relative to the backend root (src/utils → ../..).
-      // If the file doesn't exist or isn't a supported image format, the logo
-      // is silently skipped — the receipt still renders with the school name
-      // text at the left margin.
-      const logoPath = branding && branding.logoPath
-        ? path.join(__dirname, '../..', branding.logoPath)
+      // The logo is stored on the tenant row as a base64 data URL
+      // (logo_data_url) — this survives Render's ephemeral filesystem (the
+      // old logo_path approach wrote to data/logos/ which is wiped on every
+      // redeploy). We decode the data URL to a Buffer and pass it straight to
+      // pdfkit. If the data URL is malformed or the image is unsupported, the
+      // logo is silently skipped — the receipt still renders with the school
+      // name text at the left margin.
+      const logoDataUrl = branding && branding.logoDataUrl
+        ? String(branding.logoDataUrl)
         : null;
-      const supportedLogoExt = /\.(png|jpg|jpeg|gif)$/i;
-      const hasLogo = !!(logoPath && supportedLogoExt.test(logoPath) && fs.existsSync(logoPath));
+      const hasLogo = !!(logoDataUrl && /^data:image\/[a-z]+;base64,/i.test(logoDataUrl));
       const customFooterText = branding && branding.footerText
         ? String(branding.footerText).trim()
         : '';
@@ -265,13 +268,16 @@ function generateReceiptPdf({
       const logoMaxW = 120;
       if (hasLogo) {
         try {
-          // pdfkit's image() accepts a fit option that preserves aspect
-          // ratio and never exceeds the given box. We pin the top-left at
-          // (MARGIN, 15); fit() scales within the box and leaves the image
-          // at the top-left of that box.
-          doc.image(logoPath, MARGIN, 15, { fit: [logoMaxW, logoMaxH] });
+          // pdfkit's image() accepts a Buffer directly. We split the data URL
+          // on the first comma and decode the base64 payload — pdfkit sniffs
+          // the image format from the buffer bytes, so we don't need to tell
+          // it PNG vs JPEG vs GIF. fit() preserves aspect ratio and never
+          // exceeds the given box; we pin the top-left at (MARGIN, 15).
+          const base64Data = logoDataUrl.split(',')[1];
+          const imgBuffer = Buffer.from(base64Data, 'base64');
+          doc.image(imgBuffer, MARGIN, 15, { fit: [logoMaxW, logoMaxH] });
         } catch {
-          // Malformed image file — skip silently rather than failing the
+          // Malformed image data — skip silently rather than failing the
           // whole PDF generation. The school name text will still render.
         }
       }
@@ -309,7 +315,14 @@ function generateReceiptPdf({
       // =====================================================================
       // 2. BODY
       // =====================================================================
-      let y = 110;
+      // Layout tuned to fit a single A4 page (595×842pt). The previous value
+      // of 110 left the body starting 30pt below the 80pt header band; that
+      // combined with 8pt row padding could push the details table past the
+      // footer rule (footerY = 782) on receipts with longer "amount in words"
+      // strings, flowing onto a second page. Dropping the start to 100 and
+      // the row padding to 6 saves ~22pt — content ends well before y=400,
+      // leaving plenty of room for the 60pt footer.
+      let y = 100;
 
       // Right-aligned date line — Helvetica 10pt, neutral.
       doc.fillColor(COLORS.neutral)
@@ -371,7 +384,7 @@ function generateReceiptPdf({
         ['Recorded By', recordedByName || ''],
       ];
 
-      const rowPad = 8;
+      const rowPad = 6;
       const valueRightX = PAGE_WIDTH - MARGIN;
 
       for (const [label, value] of rows) {
@@ -492,6 +505,21 @@ function generateReceiptPdf({
             footerY + 22,
             { align: 'center', width: CONTENT_WIDTH }
           );
+      }
+
+      // =====================================================================
+      // Page-fit sanity check
+      // =====================================================================
+      // The whole receipt must fit on a single A4 page (595×842pt). The body
+      // ends at `y` (after the total band) and the footer rule starts at
+      // PAGE_HEIGHT - 60 = 782. If for any reason `y` pushes into the footer
+      // area (e.g. an unusually long tenant footer or future content added
+      // below the total band), pdfkit would silently flow onto a second page.
+      // We log a warning so the overflow is observable in production without
+      // crashing the receipt generation — the user still gets a PDF, just one
+      // that may need its layout revisited.
+      if (y > PAGE_HEIGHT - 80) {
+        console.warn(`[receipt-pdf] content overflow: y=${y} > ${PAGE_HEIGHT - 80} (PAGE_HEIGHT=${PAGE_HEIGHT}) for receipt ${receiptNumber}`);
       }
 
       doc.end();

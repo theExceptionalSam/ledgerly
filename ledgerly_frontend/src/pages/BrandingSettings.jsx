@@ -3,29 +3,14 @@ import { api } from "../api/client";
 import { naira } from "../utils/format";
 
 // Branding settings — owner-only page for tenant receipt branding.
-//   GET    /branding           → { branding: { name, logo_path, receipt_footer } }
-//   POST   /branding/logo      → multipart upload (field name "logo"), returns { logoPath }
+//   GET    /branding           → { branding: { name, logo_path, logo_data_url, receipt_footer } }
+//   POST   /branding/logo      → multipart upload (field name "logo"), returns { ok: true }
 //   PUT    /branding/footer    → { footer: string }
 //
-// The API base is the same Vite env var; logos are served from
-// `${API_BASE}`-hosted static files (or relative paths). We use the
-// api client's refresh-aware upload() and download-aware inline rendering.
-
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000/api/v1";
-
-// Backend stores logo_path as a root-relative path like "/data/logos/<tenant>.png".
-// Build an absolute URL we can use as an <img src>. If the API is on a different
-// origin (dev mode), prepend it; otherwise the relative path resolves naturally.
-function logoUrl(logoPath) {
-  if (!logoPath) return "";
-  if (/^https?:\/\//i.test(logoPath)) return logoPath;
-  if (logoPath.startsWith("/")) {
-    // Strip /api/v1 from the API base if present (logos are not under /api/v1)
-    const origin = API_BASE.replace(/\/api\/v1\/?$/, "");
-    return origin + logoPath;
-  }
-  return logoPath;
-}
+// Logo persistence: the backend stores the logo as a base64 data URL in
+// tenants.logo_data_url (Render's filesystem is ephemeral, so writing to
+// data/logos/ wouldn't survive a redeploy). The data URL is rendered
+// directly as an <img src> — no separate fetch, no static file route needed.
 
 export default function BrandingSettings() {
   const [branding, setBranding] = useState(null);
@@ -60,8 +45,11 @@ export default function BrandingSettings() {
     try {
       const fd = new FormData();
       fd.append("logo", file);
-      const res = await api.upload("/branding/logo", fd);
-      setBranding((b) => ({ ...(b || {}), logo_path: res.logoPath }));
+      await api.upload("/branding/logo", fd);
+      // Re-fetch branding so the new logo_data_url is reflected in the
+      // preview. The upload response no longer echoes a path (the logo is
+      // stored as a data URL now), so we just reload.
+      load();
       setNotice("Logo uploaded.");
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
@@ -84,7 +72,11 @@ export default function BrandingSettings() {
     }
   };
 
-  const currentLogo = branding?.logo_path ? logoUrl(branding.logo_path) : "";
+  // logo_data_url is a base64 data URL ("data:image/png;base64,...") — it can
+  // be used directly as an <img src>. Fall back to logo_path (legacy rows)
+  // only if logo_data_url is absent; this is just defensive — new uploads
+  // always populate logo_data_url.
+  const currentLogo = branding?.logo_data_url || branding?.logo_path || "";
 
   return (
     <div>

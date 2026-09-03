@@ -83,11 +83,13 @@ async function issueReceipt(req, res) {
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.reversed) return res.status(400).json({ error: 'Cannot issue a receipt for a reversed payment' });
 
-  // Load the tenant's name + branding columns. logo_path / receipt_footer
-  // are nullable; if absent, generateReceiptPdf falls back to the default
-  // header (school name only) and the default two-line footer.
+  // Load the tenant's name + branding columns. logo_data_url (base64 data
+  // URL) and receipt_footer are nullable; if absent, generateReceiptPdf falls
+  // back to the default header (school name only) and the default two-line
+  // footer. logo_data_url is the canonical storage (Render's filesystem is
+  // ephemeral so we keep logos in the DB).
   const { rows: tenantRows } = await db.query(
-    `SELECT name, logo_path, receipt_footer FROM tenants WHERE id = $1`,
+    `SELECT name, logo_path, logo_data_url, receipt_footer FROM tenants WHERE id = $1`,
     [tenantId]
   );
   const tenant = tenantRows[0];
@@ -164,7 +166,7 @@ async function issueReceipt(req, res) {
       receiptNumber: receipt.receipt_number,
       termName: payment.term_name || 'N/A',
       recordedByName: payment.recorded_by_name || 'Staff',
-      branding: { logoPath: tenant.logo_path, footerText: tenant.receipt_footer },
+      branding: { logoDataUrl: tenant.logo_data_url, footerText: tenant.receipt_footer },
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
@@ -262,7 +264,7 @@ async function emailReceipt(req, res) {
   if (payment.reversed) return res.status(400).json({ error: 'Cannot email a receipt for a reversed payment' });
 
   const { rows: tenantRows } = await db.query(
-    `SELECT name, logo_path, receipt_footer FROM tenants WHERE id = $1`,
+    `SELECT name, logo_path, logo_data_url, receipt_footer FROM tenants WHERE id = $1`,
     [tenantId]
   );
   const tenant = tenantRows[0];
@@ -305,7 +307,7 @@ async function emailReceipt(req, res) {
       receiptNumber: receipt.receipt_number,
       termName: payment.term_name || 'N/A',
       recordedByName: payment.recorded_by_name || 'Staff',
-      branding: { logoPath: tenant.logo_path, footerText: tenant.receipt_footer },
+      branding: { logoDataUrl: tenant.logo_data_url, footerText: tenant.receipt_footer },
     });
   } catch (err) {
     logger.error({ err: err.message, stack: err.stack, msg: 'Receipt PDF generation failed for email' });

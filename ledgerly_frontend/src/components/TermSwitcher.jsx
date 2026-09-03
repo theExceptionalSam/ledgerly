@@ -15,6 +15,13 @@ export default function TermSwitcher() {
     groups[key].push(t);
   }
 
+  // Show the session name of the currently selected term as a badge next to the
+  // selector, so the user can see at a glance which academic session they're in
+  // (the <select> already groups terms by session inside <optgroup>s, but the
+  // selected option itself only shows the term name).
+  const selectedTerm = terms.find((t) => t.id === selectedTermId);
+  const sessionName = selectedTerm?.session_name;
+
   return (
     <div className="term-switcher">
       <label htmlFor="term-select">Term</label>
@@ -25,8 +32,8 @@ export default function TermSwitcher() {
         onChange={(e) => setSelectedTermId(e.target.value)}
       >
         {terms.length === 0 && <option value="">No terms</option>}
-        {Object.entries(groups).map(([sessionName, sessionTerms]) => (
-          <optgroup key={sessionName} label={sessionName}>
+        {Object.entries(groups).map(([sessionNameKey, sessionTerms]) => (
+          <optgroup key={sessionNameKey} label={sessionNameKey}>
             {sessionTerms.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}{t.is_current ? " (current)" : ""}
@@ -35,6 +42,9 @@ export default function TermSwitcher() {
           </optgroup>
         ))}
       </select>
+      {sessionName && (
+        <span className="session-badge">{sessionName}</span>
+      )}
     </div>
   );
 }

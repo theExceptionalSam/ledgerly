@@ -47,7 +47,7 @@ router.use(requireAuth);
  */
 router.get('/', [
   query('page').optional().isInt({ min: 1 }),
-  query('pageSize').optional().isInt({ min: 1, max: 200 }),
+  query('pageSize').optional().isInt({ min: 1, max: 1000 }),
   query('search').optional().trim(),
   query('status').optional().isIn(['archived']),
   query('termId').optional().isUUID(),
@@ -89,6 +89,9 @@ router.post('/bulk', requireRole('owner', 'bursar', 'accountant'), upload.single
 router.post('/bulk/archive', requireRole('owner', 'bursar'), [
   body('ids').isArray({ min: 1 }),
 ], validate, asyncHandler(ctrl.bulkArchiveStudents));
+router.post('/bulk/restore', requireRole('owner', 'bursar'), [
+  body('ids').isArray({ min: 1 }),
+], validate, asyncHandler(ctrl.bulkRestoreStudents));
 router.get('/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.getStudentDetail));
 
 // Phase 2: itemised fee assignments

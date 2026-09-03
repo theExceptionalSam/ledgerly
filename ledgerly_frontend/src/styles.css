@@ -720,6 +720,10 @@ button { font: inherit; cursor: pointer; }
 .term-switcher label { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
 .term-switcher select { width: auto; flex: 1; max-width: 320px; }
 .term-switcher-loading { padding: 10px 14px; color: var(--ink-soft); font-size: 14px; }
+.session-badge {
+  display: inline-block; background: #E4EFF4; color: #14213D; padding: 4px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
 
 /* ---------- v2: Fee table ---------- */
 .fee-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }

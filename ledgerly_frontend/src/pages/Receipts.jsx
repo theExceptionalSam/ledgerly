@@ -53,6 +53,14 @@ export default function Receipts() {
   const [appliedFrom, setAppliedFrom] = useState("");
   const [appliedTo, setAppliedTo] = useState("");
 
+  // Reload trigger — incremented every time the user clicks Apply or Clear so
+  // the useEffect always re-fetches, even when the new filter values happen to
+  // match the previously-applied ones (e.g. clicking Apply twice in a row, or
+  // clicking Clear when filters were already cleared). Without this, the load
+  // callback's reference wouldn't change in those edge cases and the useEffect
+  // wouldn't fire — leaving the list showing stale data.
+  const [reloadKey, setReloadKey] = useState(0);
+
   const load = useCallback(() => {
     setLoading(true);
     setError("");
@@ -67,7 +75,7 @@ export default function Receipts() {
       })
       .catch((e) => setError(e.message || "Could not load receipts"))
       .finally(() => setLoading(false));
-  }, [page, appliedFrom, appliedTo]);
+  }, [page, appliedFrom, appliedTo, reloadKey]);
 
   useEffect(() => {
     load();
@@ -79,6 +87,7 @@ export default function Receipts() {
     setAppliedFrom(from);
     setAppliedTo(to);
     setPage(1);
+    setReloadKey((k) => k + 1);
   };
 
   const clearFilters = () => {
@@ -88,6 +97,7 @@ export default function Receipts() {
     setAppliedTo("");
     setStudentQuery("");
     setPage(1);
+    setReloadKey((k) => k + 1);
   };
 
   const downloadPdf = async (r) => {
