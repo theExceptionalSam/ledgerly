@@ -461,6 +461,11 @@ function generateReceiptPdf({
         .lineWidth(0.5)
         .stroke();
 
+      // Footer text — lineBreak:false + explicit height prevents PDFKit from
+      // auto-paginating when the text Y position is near the bottom of the page.
+      // Without this, PDFKit creates a new page for each footer line (4 pages
+      // instead of 1).
+
       // Centered disclaimer — Helvetica-Oblique 9pt neutral.
       doc.fillColor(COLORS.neutral)
         .font('Helvetica-Oblique')
@@ -469,7 +474,7 @@ function generateReceiptPdf({
           'This is a system-generated receipt.',
           MARGIN,
           footerY + 8,
-          { align: 'center', width: CONTENT_WIDTH }
+          { align: 'center', width: CONTENT_WIDTH, height: 12, lineBreak: false }
         );
 
       // Optional custom tenant footer text — Helvetica-Oblique 9pt neutral,
@@ -481,6 +486,8 @@ function generateReceiptPdf({
           .text(customFooterText, MARGIN, footerY + 20, {
             align: 'center',
             width: CONTENT_WIDTH,
+            height: 12,
+            lineBreak: false,
           });
 
         // "Powered by Ledgerly" branding line — shifted down to footerY+34
@@ -492,7 +499,7 @@ function generateReceiptPdf({
             'Powered by Ledgerly',
             MARGIN,
             footerY + 34,
-            { align: 'center', width: CONTENT_WIDTH }
+            { align: 'center', width: CONTENT_WIDTH, height: 12, lineBreak: false }
           );
       } else {
         // "Powered by Ledgerly" branding line — original two-line layout.
@@ -503,7 +510,7 @@ function generateReceiptPdf({
             'Powered by Ledgerly',
             MARGIN,
             footerY + 22,
-            { align: 'center', width: CONTENT_WIDTH }
+            { align: 'center', width: CONTENT_WIDTH, height: 12, lineBreak: false }
           );
       }
 
