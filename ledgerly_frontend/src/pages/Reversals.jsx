@@ -57,12 +57,12 @@ export default function Reversals() {
                     Requested by {r.requested_by_name} on {new Date(r.created_at).toLocaleDateString("en-NG")}
                   </div>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                <div className="reversal-actions">
                   <span className="badge" style={{ color: r.status === "approved" ? "#1B7A43" : r.status === "rejected" ? "#B3261E" : "#C77D22", background: r.status === "approved" ? "#E6F4EA" : r.status === "rejected" ? "#FBEAE9" : "#FBF0E2" }}>
                     {r.status}
                   </span>
                   {r.status === "pending" && (
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className="reversal-actions-buttons">
                       <button className="btn-primary" disabled={busy === r.id} onClick={() => approve(r.id)}>
                         {busy === r.id ? "…" : "Approve"}
                       </button>

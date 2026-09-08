@@ -449,7 +449,7 @@ export default function Students() {
                       </div>
                     </div>
                     {viewArchived ? (
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div className="archived-actions">
                         <button className="btn-primary" onClick={() => restore(s.id, s.name)}>Restore</button>
                         {canDelete && (
                           <button className="btn-danger-ghost" onClick={() => permanentDelete(s.id, s.name)}>Delete forever</button>

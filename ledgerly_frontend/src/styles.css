@@ -1090,3 +1090,59 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   margin: 8px 0;
 }
 
+/* ---------- New financial pages: mobile/tablet optimization ---------- */
+
+/* Reversal list item — actions stack below info on mobile */
+.reversal-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.reversal-actions-buttons { display: flex; gap: 8px; }
+
+/* Budget form row — inputs stack vertically on mobile */
+.budget-form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.budget-form-row input { flex: 1; min-width: 140px; }
+.budget-form-row button { flex-shrink: 0; }
+
+/* Reconciliation date toolbar — stacks on mobile */
+.recon-date-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.recon-date-row input { width: auto; min-width: 160px; }
+
+/* Archived student actions — stack on mobile */
+.archived-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Tablet: stat-grid shows 2 cols (already handled by existing rule) */
+/* Mobile: stat-grid shows 1 col (already handled by existing rule) */
+
+/* ---------- Mobile overrides for new financial pages ---------- */
+@media (max-width: 639px) {
+  /* Reversals: buttons go full-width, stack below the info */
+  .reversal-actions { align-items: stretch; }
+  .reversal-actions-buttons { flex-direction: column; }
+  .reversal-actions-buttons .btn-primary,
+  .reversal-actions-buttons .btn-danger-ghost { width: 100%; }
+
+  /* Budgets: form inputs stack vertically */
+  .budget-form-row { flex-direction: column; align-items: stretch; }
+  .budget-form-row input { min-width: 100%; }
+
+  /* Reconciliation: date input goes full-width */
+  .recon-date-row { flex-direction: column; align-items: stretch; }
+  .recon-date-row input { width: 100%; min-width: 100%; }
+
+  /* Archived student actions: buttons stack full-width */
+  .archived-actions { flex-direction: column; }
+  .archived-actions .btn-primary,
+  .archived-actions .btn-danger-ghost { width: 100%; }
+
+  /* Reversal list items: reduce padding on mobile */
+  .list-item-row { padding: 12px 14px; }
+  .reversal-actions { margin-top: 10px; }
+
+  /* Stat values slightly smaller on mobile for the new pages */
+  .stat-value { font-size: 20px; }
+}
+
+/* ---------- Tablet overrides for new financial pages ---------- */
+@media (max-width: 1024px) and (min-width: 640px) {
+  /* Reversals: actions go below info on tablet too (narrower screens) */
+  .reversal-actions { align-items: flex-end; }
+}
+

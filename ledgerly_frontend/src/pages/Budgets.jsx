@@ -78,7 +78,7 @@ export default function Budgets() {
           </div>
 
           {showForm && (
-            <div className="action-row" style={{ background: "#FBFBF9", padding: 14, borderRadius: 8, marginBottom: 14 }}>
+            <div className="budget-form-row" style={{ background: "#FBFBF9", padding: 14, borderRadius: 8, marginBottom: 14 }}>
               <input placeholder="Class name (e.g. JSS 1)" value={className} onChange={(e) => setClassName(e.target.value)} id="budget-class" name="className" />
               <input placeholder="Expected amount" type="number" value={expectedAmount} onChange={(e) => setExpectedAmount(e.target.value)} id="budget-amount" name="expectedAmount" inputMode="decimal" />
               <button className="btn-primary" onClick={save}>Save</button>

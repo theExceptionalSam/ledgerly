@@ -28,9 +28,9 @@ export default function Reconciliation() {
       <p className="page-intro">Verify cash collected vs payments recorded. Check receipt sequence for gaps.</p>
 
       <div className="toolbar">
-        <div className="toolbar-left">
+        <div className="toolbar-left recon-date-row">
           <label htmlFor="recon-date" style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)" }}>Date</label>
-          <input type="date" id="recon-date" name="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto", maxWidth: 200 }} />
+          <input type="date" id="recon-date" name="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <button className="btn-ghost" onClick={load}>Refresh</button>
       </div>
