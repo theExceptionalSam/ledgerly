@@ -55,6 +55,11 @@ const cronRoutes = require('./routes/cron.routes');
 const datarequestsRoutes = require('./routes/datarequests.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const receiptsRoutes = require('./routes/receipts.routes');
+const reversalsRoutes = require('./routes/reversals.routes');
+const agedDebtorsRoutes = require('./routes/aged-debtors.routes');
+const budgetsRoutes = require('./routes/budgets.routes');
+const dataExportRoutes = require('./routes/data-export.routes');
+const reconciliationRoutes = require('./routes/reconciliation.routes');
 
 const app = express();
 
@@ -134,6 +139,11 @@ app.use('/api/v1/webhooks', webhooksRoutes);
 app.use('/api/v1/data-requests', datarequestsRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/receipts', receiptsRoutes);
+app.use('/api/v1/reversals', reversalsRoutes);
+app.use('/api/v1/aged-debtors', agedDebtorsRoutes);
+app.use('/api/v1/budgets', budgetsRoutes);
+app.use('/api/v1/data-export', dataExportRoutes);
+app.use('/api/v1/reconciliation', reconciliationRoutes);
 
 // Swagger UI — API documentation. Mounted after all routes so it doesn't
 // shadow any real /api/docs endpoint, and before the 404 handler so the UI

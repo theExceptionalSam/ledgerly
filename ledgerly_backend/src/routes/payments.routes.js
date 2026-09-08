@@ -67,7 +67,7 @@ router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('termId').optional().isUUID(),
 ], validate, requireFeature('payments'), asyncHandler(ctrl.recordPayment));
 
-router.post('/:id/reverse', requireRole('owner', 'accountant'), [
+router.post('/:id/reverse', requireRole('owner'), [
   param('id').isUUID(),
   body('reason').trim().isLength({ min: 3, max: 300 }),
 ], validate, asyncHandler(ctrl.reversePayment));

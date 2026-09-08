@@ -179,9 +179,13 @@ async function issueReceipt(req, res) {
 
 // List receipts for the tenant with optional filters. Tenant-scoped — the
 // tenant_id from req.user is always applied, never trusted from input.
+//
+// Voided receipts are excluded by default (the day-to-day list shows active
+// receipts only). Pass ?includeVoided=true to include them — useful for the
+// voided-receipt register audit view.
 async function listReceipts(req, res) {
   const { tenantId } = req.user;
-  const { studentId, from, to } = req.query;
+  const { studentId, from, to, includeVoided } = req.query;
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
 
@@ -189,6 +193,9 @@ async function listReceipts(req, res) {
   // filters get appended as $2, $3, ... and tracked in the params array.
   const where = ['r.tenant_id = $1'];
   const params = [tenantId];
+  if (String(includeVoided).toLowerCase() !== 'true') {
+    where.push(`r.voided_at IS NULL`);
+  }
   if (studentId) {
     params.push(studentId);
     where.push(`p.student_id = $${params.length}`);
@@ -219,15 +226,18 @@ async function listReceipts(req, res) {
   pageParams.push((page - 1) * pageSize);
   const pageRes = db.query(
     `SELECT r.id, r.receipt_number, r.issued_at, r.payment_id,
+            r.voided_at, r.void_reason,
             p.amount, p.method, p.paid_on,
             s.name AS student_name, s.class AS student_class,
             fh.name AS fee_head_name,
-            u.name AS issued_by_name
+            u.name AS issued_by_name,
+            vu.name AS voided_by_name
      FROM receipts r
      JOIN payments p ON p.id = r.payment_id
      JOIN students s ON s.id = p.student_id
      LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
      LEFT JOIN users u ON u.id = r.issued_by
+     LEFT JOIN users vu ON vu.id = r.voided_by
      WHERE ${whereClause}
      ORDER BY r.issued_at DESC
      LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
@@ -380,4 +390,154 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { issueReceipt, listReceipts, emailReceipt };
+// Void a receipt — owner only. The receipt row is NOT deleted (the receipt
+// number was issued and can never be reused; deleting the row would create an
+// unexplained gap in the sequence). Instead, three nullable columns mark it
+// voided: who, when, and why. The voided receipt stays queryable via the
+// /receipts/voided endpoint and the ?includeVoided=true list param.
+//
+// Voiding is distinct from reversing the underlying payment: a reversed
+// payment has a financial correction attached (the money is un-collected); a
+// voided receipt is an administrative/audit correction to the receipt itself
+// (e.g. printed with the wrong student name, then reissued with a new number).
+async function voidReceipt(req, res) {
+  const { tenantId, id: userId, role } = req.user;
+  const { id } = req.params;
+  const { reason } = req.body || {};
+
+  if (role !== 'owner') {
+    return res.status(403).json({ error: 'Only an owner can void a receipt' });
+  }
+  if (!reason || !String(reason).trim()) {
+    return res.status(400).json({ error: 'A reason is required to void a receipt' });
+  }
+  const trimmedReason = String(reason).trim().slice(0, 500);
+
+  const { rows: receiptRows } = await db.query(
+    `SELECT id, receipt_number, voided_at FROM receipts WHERE id = $1 AND tenant_id = $2`,
+    [id, tenantId]
+  );
+  const receipt = receiptRows[0];
+  if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
+  if (receipt.voided_at) {
+    return res.status(400).json({ error: 'Receipt is already voided' });
+  }
+
+  await db.query(
+    `UPDATE receipts SET voided_at = now(), voided_by = $1, void_reason = $2 WHERE id = $3 AND tenant_id = $4`,
+    [userId, trimmedReason, id, tenantId]
+  );
+
+  await recordAudit({
+    tenantId,
+    actorUserId: userId,
+    action: 'update',
+    entityType: 'receipt',
+    entityId: id,
+    ipAddress: req.ip,
+    metadata: { voided: true, receiptNumber: receipt.receipt_number, reason: trimmedReason },
+  });
+
+  res.json({ ok: true, voidedAt: new Date().toISOString() });
+}
+
+// List voided receipts for the tenant — owner or accountant. Returns the
+// voiding context (who/when/why) alongside the standard receipt columns so
+// the audit view can show the full picture without a second round-trip.
+async function listVoidedReceipts(req, res) {
+  const { tenantId } = req.user;
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
+
+  const countRes = db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM receipts r
+     JOIN payments p ON p.id = r.payment_id
+     WHERE r.tenant_id = $1 AND r.voided_at IS NOT NULL`,
+    [tenantId]
+  );
+
+  const pageRes = db.query(
+    `SELECT r.id, r.receipt_number, r.issued_at, r.voided_at, r.void_reason, r.payment_id,
+            p.amount, p.method, p.paid_on,
+            s.name AS student_name, s.class AS student_class,
+            fh.name AS fee_head_name,
+            u.name AS issued_by_name,
+            vu.name AS voided_by_name
+     FROM receipts r
+     JOIN payments p ON p.id = r.payment_id
+     JOIN students s ON s.id = p.student_id
+     LEFT JOIN fee_heads fh ON fh.id = p.fee_head_id
+     LEFT JOIN users u ON u.id = r.issued_by
+     LEFT JOIN users vu ON vu.id = r.voided_by
+     WHERE r.tenant_id = $1 AND r.voided_at IS NOT NULL
+     ORDER BY r.voided_at DESC
+     LIMIT $2 OFFSET $3`,
+    [tenantId, pageSize, (page - 1) * pageSize]
+  );
+
+  const [countResult, pageResult] = await Promise.all([countRes, pageRes]);
+  const total = countResult.rows[0] ? countResult.rows[0].total : 0;
+
+  res.json({ receipts: pageResult.rows, total, page, pageSize });
+}
+
+// Receipt sequence integrity check — owner or accountant. Scans all receipt
+// numbers issued for the current calendar year (format <XXX>-<YYYY>-<NNNNN>)
+// and finds any gaps in the NNNNN counter. Gaps usually indicate a voided
+// receipt (expected — the row is kept) but can also indicate a failed insert
+// that allocated a number (should not happen with the current transactional
+// logic) or manual DB tampering (audit red flag).
+//
+// The check is read-only and includes voided receipts (their numbers are part
+// of the sequence — they were issued, just later voided).
+async function checkReceiptSequence(req, res) {
+  const { tenantId } = req.user;
+  const year = new Date().getFullYear();
+  const pattern = `%-${year}-%`;
+
+  const { rows } = await db.query(
+    `SELECT receipt_number, voided_at
+     FROM receipts
+     WHERE tenant_id = $1 AND receipt_number LIKE $2
+     ORDER BY receipt_number`,
+    [tenantId, pattern]
+  );
+
+  // Parse the NNNNN counter from each receipt_number. Filter out any garbage
+  // (shouldn't happen, but a malformed row shouldn't crash the check).
+  const parsed = rows
+    .map((r) => {
+      const parts = String(r.receipt_number || '').split('-');
+      const n = Number(parts[parts.length - 1]);
+      return Number.isFinite(n) ? { counter: n, voided: !!r.voided_at } : null;
+    })
+    .filter((x) => x !== null);
+
+  if (parsed.length === 0) {
+    return res.json({ gaps: [], totalReceipts: 0, expectedSequence: 0, year, voidedCount: 0 });
+  }
+
+  const counters = parsed.map((p) => p.counter).sort((a, b) => a - b);
+  const min = counters[0];
+  const max = counters[counters.length - 1];
+  const expectedSequence = max - min + 1; // count if [min, max] were complete
+
+  // Find gaps — numbers in [min, max] with no matching receipt.
+  const counterSet = new Set(counters);
+  const gaps = [];
+  for (let n = min; n <= max; n++) {
+    if (!counterSet.has(n)) gaps.push(n);
+  }
+
+  res.json({
+    gaps,
+    totalReceipts: counters.length,
+    expectedSequence,
+    year,
+    voidedCount: parsed.filter((p) => p.voided).length,
+    range: { min, max },
+  });
+}
+
+module.exports = { issueReceipt, listReceipts, emailReceipt, voidReceipt, listVoidedReceipts, checkReceiptSequence };

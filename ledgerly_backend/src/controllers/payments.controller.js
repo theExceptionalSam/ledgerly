@@ -41,6 +41,18 @@ async function recordPayment(req, res) {
     if (!term) return res.status(404).json({ error: 'Term not found' });
   }
 
+  // Fiscal-period closure enforcement — once a term is closed, no new payments
+  // can be recorded against it. This protects historical financials from being
+  // edited after the books are settled. The owner can reopen the term if a late
+  // adjustment is genuinely needed.
+  const { rows: termCloseRows } = await db.query(
+    `SELECT closed_at FROM terms WHERE id = $1 AND tenant_id = $2`,
+    [resolvedTermId, tenantId]
+  );
+  if (termCloseRows[0]?.closed_at) {
+    return res.status(403).json({ error: 'This term is closed. Payments cannot be recorded against a closed term. Ask the owner to reopen it if needed.' });
+  }
+
   // Idempotency: if this key was already used for this tenant, return the original result
   // instead of creating a duplicate payment (protects against double-tap / retried requests)
   if (idempotencyKey) {
@@ -82,13 +94,18 @@ async function recordPayment(req, res) {
 
 // Payments are never edited or hard-deleted once recorded — a correction is a reversing entry,
 // so the ledger always reflects what actually happened and stays auditable.
+//
+// As of the financial-controls pass, direct reversal is owner-only. Bursars /
+// accountants must submit a reversal_requests row (see reversals.controller.js)
+// which the owner then approves. This separation prevents a single staff member
+// from both recording and erasing a payment without oversight.
 async function reversePayment(req, res) {
   const { tenantId, id: userId, role } = req.user;
   const { id } = req.params;
   const { reason } = req.body;
 
-  if (!['owner', 'accountant'].includes(role)) {
-    return res.status(403).json({ error: 'Only an owner or accountant can reverse a payment' });
+  if (role !== 'owner') {
+    return res.status(403).json({ error: 'Only an owner can directly reverse a payment. Bursars and accountants must submit a reversal request for owner approval.' });
   }
 
   const { rows: paymentRows } = await db.query(`SELECT * FROM payments WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);

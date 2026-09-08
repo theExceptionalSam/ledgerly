@@ -362,9 +362,17 @@ async function assignStudentFee(req, res) {
   const head = headRows[0];
   if (!head) return res.status(404).json({ error: 'Fee head not found' });
 
-  const { rows: termRows } = await db.query(`SELECT id FROM terms WHERE id = $1 AND tenant_id = $2`, [termId, tenantId]);
+  const { rows: termRows } = await db.query(`SELECT id, closed_at FROM terms WHERE id = $1 AND tenant_id = $2`, [termId, tenantId]);
   const term = termRows[0];
   if (!term) return res.status(404).json({ error: 'Term not found' });
+
+  // Fiscal-period closure enforcement — fee assignments against a closed term
+  // are rejected because they would imply an obligation for a period whose
+  // books are already settled. The owner can reopen the term if a genuine late
+  // adjustment is needed.
+  if (term.closed_at) {
+    return res.status(403).json({ error: 'This term is closed. Fee assignments cannot be added to a closed term. Ask the owner to reopen it if needed.' });
+  }
 
   // Upsert: insert, or update expected_amount if the (student, head, term) row already exists.
   //
