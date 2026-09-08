@@ -45,7 +45,7 @@ export default function Students() {
   const highlightId = searchParams.get("highlight");
 
   const canEdit = ["owner", "bursar", "accountant"].includes(user.role);
-  const canDelete = ["owner", "bursar"].includes(user.role);
+  const canDelete = user.role === "owner";
   const isOwner = user.role === "owner";
 
   // Debounce search input (500ms) so we don't spam the server on every keystroke
@@ -204,6 +204,27 @@ export default function Students() {
   const restore = async (id, name) => {
     await api.post(`/students/${id}/restore`, {});
     load();
+  };
+
+  // Permanent delete — owner only. Requires type-to-confirm with the student's exact name.
+  // Student must be archived first. Deletes ALL data including payment history.
+  const permanentDelete = async (id, name) => {
+    const confirmed = prompt(
+      `PERMANENT DELETE — this cannot be undone.\n\nAll data for ${name} will be permanently deleted including payment history, receipts, and fee assignments.\n\nType the student's exact name to confirm:`
+    );
+    if (confirmed === null) return;
+    if (confirmed.trim() !== name) {
+      alert("Name does not match. Permanent delete cancelled.");
+      return;
+    }
+    try {
+      await api.del(`/students/${id}/permanent`, { confirmName: name });
+      alert(`${name} has been permanently deleted.`);
+      setExpanded(null);
+      load();
+    } catch (e) {
+      alert(e.message || "Could not delete student.");
+    }
   };
 
   const openReceipt = (paymentId) => {
@@ -430,6 +451,9 @@ export default function Students() {
                     {viewArchived ? (
                       <div style={{ display: "flex", gap: 8 }}>
                         <button className="btn-primary" onClick={() => restore(s.id, s.name)}>Restore</button>
+                        {canDelete && (
+                          <button className="btn-danger-ghost" onClick={() => permanentDelete(s.id, s.name)}>Delete forever</button>
+                        )}
                       </div>
                     ) : (
                       <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : s.id)}>

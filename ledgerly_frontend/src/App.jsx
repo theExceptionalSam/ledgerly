@@ -39,6 +39,10 @@ const ParentPortal = lazy(() => import("./pages/ParentPortal"));
 const Security = lazy(() => import("./pages/Security"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const AgedDebtors = lazy(() => import("./pages/AgedDebtors"));
+const Budgets = lazy(() => import("./pages/Budgets"));
+const Reconciliation = lazy(() => import("./pages/Reconciliation"));
+const Reversals = lazy(() => import("./pages/Reversals"));
 const BankReconciliation = lazy(() => import("./pages/BankReconciliation"));
 const FeeTemplates = lazy(() => import("./pages/FeeTemplates"));
 const PaymentPlans = lazy(() => import("./pages/PaymentPlans"));
@@ -156,6 +160,26 @@ export default function App() {
               <Route path="/webhooks" element={
                 <ProtectedRoute roles={["owner"]}>
                   <Layout><Webhooks /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/aged-debtors" element={
+                <ProtectedRoute roles={["owner", "accountant"]}>
+                  <Layout><AgedDebtors /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/budgets" element={
+                <ProtectedRoute>
+                  <Layout><Budgets /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/reconciliation" element={
+                <ProtectedRoute roles={["owner", "accountant", "bursar"]}>
+                  <Layout><Reconciliation /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/reversals" element={
+                <ProtectedRoute roles={["owner"]}>
+                  <Layout><Reversals /></Layout>
                 </ProtectedRoute>
               } />
               {/* Platform admin — separate auth (no ProtectedRoute) */}

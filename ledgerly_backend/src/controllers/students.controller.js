@@ -236,6 +236,50 @@ async function restoreStudent(req, res) {
   res.json({ ok: true });
 }
 
+// Permanent delete — removes the student and all their data completely.
+// This is IRREVERSIBLE. Only the owner can do this. The student must be
+// archived first (you can't permanently delete an active student). Payment
+// history is also deleted — use with caution.
+//
+// Two-step gate (must archive before permanent-delete) + type-to-confirm name
+// match = defence in depth against the worst-case "I deleted the wrong student"
+// scenario. The audit log entry uses action='delete' with metadata.permanentDelete
+// = true so the irreversible action is distinguishable from a soft archive in
+// the audit trail.
+async function permanentlyDeleteStudent(req, res) {
+  const { tenantId, id: userId } = req.user;
+  const { id } = req.params;
+  const { confirmName } = req.body;
+
+  // Verify the student exists and is archived
+  const { rows } = await db.query(`SELECT id, name, status FROM students WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+  const student = rows[0];
+  if (!student) return res.status(404).json({ error: 'Student not found' });
+  if (student.status !== 'archived') {
+    return res.status(400).json({ error: 'Student must be archived first before permanent deletion' });
+  }
+  // Require name confirmation (the frontend sends the student's name as a type-to-confirm)
+  if (confirmName !== student.name) {
+    return res.status(400).json({ error: 'Confirmation name does not match. Type the student\'s exact name to confirm.' });
+  }
+
+  // Delete all related data (payments, fee assignments, receipts, parent_students links)
+  // ON DELETE CASCADE handles most of this, but let's be explicit for audit
+  await db.transaction(async (client) => {
+    // Delete payments (which cascades to receipts)
+    await db.query(`DELETE FROM payments WHERE student_id = $1 AND tenant_id = $2`, [id, tenantId], client);
+    // Delete fee assignments
+    await db.query(`DELETE FROM student_fee_assignments WHERE student_id = $1 AND tenant_id = $2`, [id, tenantId], client);
+    // Delete parent-student links
+    await db.query(`DELETE FROM parent_students WHERE student_id = $1`, [id], client);
+    // Delete the student
+    await db.query(`DELETE FROM students WHERE id = $1 AND tenant_id = $2`, [id, tenantId], client);
+  });
+
+  await recordAudit({ tenantId, actorUserId: userId, action: 'delete', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: { permanentDelete: true, studentName: student.name } });
+  res.json({ ok: true, deleted: student.name });
+}
+
 // Bulk archive — soft-deletes multiple students in a single UPDATE. Financial history is
 // preserved for each. Returns the count archived (rowCount from the bulk UPDATE).
 async function bulkArchiveStudents(req, res) {
@@ -439,4 +483,4 @@ async function applyDiscount(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, bulkArchiveStudents, bulkRestoreStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount, autoSyncClassFees };
+module.exports = { listStudents, createStudent, updateStudent, archiveStudent, restoreStudent, permanentlyDeleteStudent, bulkArchiveStudents, bulkRestoreStudents, getStudentDetail, getStudentFees, assignStudentFee, applyDiscount, autoSyncClassFees };

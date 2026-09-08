@@ -170,6 +170,15 @@ export default function Layout({ children }) {
                   {isOwner && (
                     <NavLink to="/audit-log" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Audit Log</NavLink>
                   )}
+                  <div className="nav-more-divider" style={{ borderTop: "1px solid var(--line)", margin: "6px 0" }} />
+                  {(isOwner || user.role === "accountant") && (
+                    <NavLink to="/aged-debtors" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Aged Debtors</NavLink>
+                  )}
+                  <NavLink to="/budgets" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Budgets</NavLink>
+                  <NavLink to="/reconciliation" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>End-of-Day Reconciliation</NavLink>
+                  {isOwner && (
+                    <NavLink to="/reversals" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Reversal Requests</NavLink>
+                  )}
                 </div>
               )}
             </div>

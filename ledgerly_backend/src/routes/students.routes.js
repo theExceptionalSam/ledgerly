@@ -86,10 +86,10 @@ router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
   res.send(csv.join('\n'));
 }));
 router.post('/bulk', requireRole('owner', 'bursar', 'accountant'), upload.single('file'), asyncHandler(bulkCtrl.bulkUpload));
-router.post('/bulk/archive', requireRole('owner', 'bursar'), [
+router.post('/bulk/archive', requireRole('owner'), [
   body('ids').isArray({ min: 1 }),
 ], validate, asyncHandler(ctrl.bulkArchiveStudents));
-router.post('/bulk/restore', requireRole('owner', 'bursar'), [
+router.post('/bulk/restore', requireRole('owner'), [
   body('ids').isArray({ min: 1 }),
 ], validate, asyncHandler(ctrl.bulkRestoreStudents));
 router.get('/:id', [param('id').isUUID()], validate, asyncHandler(ctrl.getStudentDetail));
@@ -125,7 +125,21 @@ router.put('/:id', requireRole('owner', 'bursar', 'accountant'), [
   body('guardianContact').optional({ checkFalsy: true }).trim().isLength({ max: 120 }),
 ], validate, asyncHandler(ctrl.updateStudent));
 
-router.delete('/:id', requireRole('owner', 'bursar'), [param('id').isUUID()], validate, asyncHandler(ctrl.archiveStudent));
-router.post('/:id/restore', requireRole('owner', 'bursar'), [param('id').isUUID()], validate, asyncHandler(ctrl.restoreStudent));
+// Archive / restore / permanent-delete are owner-only. Bursars and accountants
+// can create and edit students, but only the owner can remove them — removing a
+// student (even soft-delete) hides their financial history from the active list,
+// which is a privilege that must stay with the account owner. Permanent delete
+// additionally wipes payments and receipts, so it gets its own (also owner-only)
+// route below.
+router.delete('/:id', requireRole('owner'), [param('id').isUUID()], validate, asyncHandler(ctrl.archiveStudent));
+router.post('/:id/restore', requireRole('owner'), [param('id').isUUID()], validate, asyncHandler(ctrl.restoreStudent));
+
+// Permanent (irreversible) delete. The student MUST be archived first — this is
+// a deliberate two-step gate so the owner can't fat-finger an active student
+// into oblivion. Requires type-to-confirm name match in the request body.
+router.delete('/:id/permanent', requireRole('owner'), [
+  param('id').isUUID(),
+  body('confirmName').trim().isLength({ min: 1, max: 150 }),
+], validate, asyncHandler(ctrl.permanentlyDeleteStudent));
 
 module.exports = router;
