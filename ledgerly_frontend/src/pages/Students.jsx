@@ -61,7 +61,7 @@ export default function Students() {
       api.get(`/students?status=archived`).then((d) => { setStudents(d.students); setTotal(d.total || d.students.length); setTotalPages(1); }).catch((e) => setError(e.message));
     } else if (selectedTermId) {
       const searchParam = debouncedQuery ? `&search=${encodeURIComponent(debouncedQuery)}` : "";
-      api.get(`/students?termId=${selectedTermId}&page=${page}&pageSize=50${searchParam}`).then((d) => {
+      api.get(`/students?termId=${selectedTermId}&page=${page}&pageSize=100${searchParam}`).then((d) => {
         setStudents(d.students); setTotal(d.total || 0); setTotalPages(d.totalPages || 1);
       }).catch((e) => setError(e.message));
     }
