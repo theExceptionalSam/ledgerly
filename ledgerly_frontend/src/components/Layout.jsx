@@ -242,6 +242,18 @@ export default function Layout({ children }) {
             </div>
 
             <div className="app-nav-mobile-group">
+              <div className="app-nav-mobile-group-title">Financial</div>
+              {(isOwner || user.role === "accountant") && (
+                <NavLink to="/aged-debtors" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Aged Debtors</NavLink>
+              )}
+              <NavLink to="/budgets" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Budgets</NavLink>
+              <NavLink to="/reconciliation" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>End-of-Day Reconciliation</NavLink>
+              {isOwner && (
+                <NavLink to="/reversals" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Reversal Requests</NavLink>
+              )}
+            </div>
+
+            <div className="app-nav-mobile-group">
               <div className="app-nav-mobile-group-title">Legal</div>
               <Link to="/parent" onClick={closeMenu} className="app-nav-mobile-link">Parent Portal</Link>
               <Link to="/pricing" onClick={closeMenu} className="app-nav-mobile-link">Pricing</Link>
