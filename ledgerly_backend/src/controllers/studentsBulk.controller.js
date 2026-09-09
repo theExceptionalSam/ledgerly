@@ -1,5 +1,11 @@
 const { randomUUID } = require('crypto');
-const XLSX = require('xlsx');
+// SECURITY: switched from the abandoned npm-hosted `xlsx` (SheetJS moved off
+// npm) to the API-compatible community fork `@e965/xlsx`. The old package had
+// two unpatched high-severity advisories (prototype pollution + ReDoS) that
+// could be triggered by a crafted XLSX file uploaded via the bulk-import
+// endpoint. The fork includes the fixes; the require name change is the only
+// code delta.
+const XLSX = require('@e965/xlsx');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 const { autoSyncClassFees } = require('./students.controller');

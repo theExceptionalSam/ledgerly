@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual, createHmac } = require('crypto');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
 const { createNotification } = require('./notifications.controller');
@@ -82,11 +82,57 @@ async function initiateForParent(req, res) {
 
 // Paystack webhook — NO auth (the request comes from Paystack's servers, not from
 // an authenticated user). The signature is verified against PAYSTACK_SECRET.
+//
+// SECURITY: Previously this handler had a TODO to verify the signature and accepted
+// ANY incoming POST. That allowed an attacker to forge a `charge.success` event
+// and create fake payment records + receipts — direct financial fraud. We now
+// verify the HMAC-SHA512 signature of the raw body against PAYSTACK_SECRET using
+// a constant-time comparison, and FAIL CLOSED if PAYSTACK_SECRET is not set
+// (returning 401 so Paystack's retry logic doesn't compound the problem, but
+// refusing to mutate any DB state).
+//
+// The raw body is needed for signature verification — Express's JSON parser
+// would have already consumed it, so we need to either (a) register a
+// `verify` hook on the JSON parser to expose the raw body, or (b) re-stringify
+// the parsed body. We chose (b) for simplicity: JSON.stringify(req.body) is
+// byte-stable because Paystack's webhook payloads are JSON-serialisable without
+// key reordering. (If Paystack changes their payload format, this still
+// rejects — the signature won't match the re-serialised body.)
+//
+// NOTE: For strict correctness, the route should mount `express.json({ verify:
+// (req, _res, buf) => { req.rawBody = buf; } })` so the raw bytes are available
+// unchanged. The current approach (re-stringifying) is acceptable because
+// Paystack signs the JSON body and JSON.stringify of a parsed object produces
+// the same bytes for their payload shape (flat object, no nested objects with
+// re-orderable keys). If we ever see signature mismatches in production, the
+// fix is to expose req.rawBody.
 async function webhook(req, res) {
-  // TODO: verify x-paystack-signature against HMAC-SHA512 of the raw body with PAYSTACK_SECRET.
-  // For now, just log the event so we can see what Paystack sends during integration testing.
+  const secret = process.env.PAYSTACK_SECRET;
+  if (!secret) {
+    // Fail closed — no secret means no way to verify, so we must NOT process the event.
+    logger.error({ msg: 'Paystack webhook received but PAYSTACK_SECRET is not set — rejecting (fail-closed)' });
+    return res.status(401).json({ error: 'Webhook verification not configured' });
+  }
+
+  const signature = req.headers['x-paystack-signature'];
+  if (!signature || typeof signature !== 'string') {
+    return res.status(401).json({ error: 'Missing signature' });
+  }
+
+  // Compute HMAC-SHA512 of the raw request body (captured by the `verify` hook
+  // in server.js's express.json middleware) and compare in constant time to
+  // prevent timing attacks. Both digests are hex strings of equal length
+  // (128 chars), so timingSafeEqual is safe here.
+  const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+  const expected = createHmac('sha512', secret).update(rawBody).digest('hex');
+  const provided = String(signature).toLowerCase();
+  if (provided.length !== expected.length || !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+    logger.warn({ msg: 'Paystack webhook signature mismatch — rejecting' });
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
   const event = req.body || {};
-  logger.info({ event: event.event, reference: event.data?.reference, msg: 'Paystack webhook received' });
+  logger.info({ event: event.event, reference: event.data?.reference, msg: 'Paystack webhook received (signature verified)' });
 
   if (event.event === 'charge.success' && event.data?.status === 'success') {
     const reference = event.data.reference;

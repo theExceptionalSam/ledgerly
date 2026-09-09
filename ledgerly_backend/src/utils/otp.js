@@ -1,5 +1,14 @@
 const { randomUUID, randomInt, createHash } = require('crypto');
 const db = require('../db');
+const logger = require('./logger');
+
+// SECURITY: OTP codes are sensitive — they grant account access (registration
+// verification) until they expire. Logging them to stdout in plaintext (as the
+// previous `console.log` did) leaks them to anyone with log access (aggregated
+// logging services, log shippers, even Splunk/Datadog read-only users). Only
+// emit the code to logs when the explicit dev flag is set, and even then use
+// the structured logger (so it can be redacted at the shipper level).
+const showDevOtp = process.env.LEDGERLY_DEV_SHOW_OTP === 'true';
 
 const OTP_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
@@ -34,7 +43,12 @@ async function issueVerificationCode(tenantId, email) {
     ]
   );
 
-  console.log(`[OTP] Verification code for ${email}: ${code}`);
+  // SECURITY: only emit the code to logs when the explicit dev flag is set, and
+  // use the structured logger so log shippers can redact the `otp` field. The
+  // previous `console.log` printed every code in plaintext to stdout.
+  if (showDevOtp) {
+    logger.warn({ email, otp: code, msg: 'OTP issued (dev mode — LEDGERLY_DEV_SHOW_OTP=true)' });
+  }
 
   if (process.env.RESEND_API_KEY) {
     try {
@@ -57,7 +71,9 @@ async function issueVerificationCode(tenantId, email) {
         `,
       });
     } catch (emailError) {
-      console.error('[Email Error] Failed to send OTP email via Resend:', emailError.message);
+      // Don't leak the email address into generic logs at error level — log via
+      // the structured logger which the operator can route/redact.
+      logger.error({ err: emailError.message, msg: 'Failed to send OTP email via Resend' });
     }
   }
 

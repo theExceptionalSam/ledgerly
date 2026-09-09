@@ -1,3 +1,4 @@
+const { timingSafeEqual } = require('crypto');
 const db = require('../db');
 const logger = require('../utils/logger');
 const { createNotification } = require('./notifications.controller');
@@ -22,12 +23,42 @@ function getResend() {
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// SECURITY: constant-time comparison to prevent timing attacks against the
+// cron secret. The previous `provided !== CRON_SECRET` short-circuited on the
+// first non-matching byte, leaking the secret's prefix over many requests.
+// timingSafeEqual requires equal-length buffers, so we guard against the
+// length-mismatch case (which itself reveals only the length, not the bytes).
+function secretsMatch(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
 function requireCronSecret(req, res, next) {
   const provided = req.headers['x-cron-secret'] || req.body?.secret;
-  if (!CRON_SECRET || provided !== CRON_SECRET) {
+  // Fail closed: if no secret is configured, refuse to run any cron job. The
+  // previous implementation also refused when CRON_SECRET was unset, but the
+  // check is restated here for clarity now that the comparison helper exists.
+  if (!CRON_SECRET || !secretsMatch(provided || '', CRON_SECRET)) {
     return res.status(401).json({ error: 'Invalid cron secret' });
   }
   next();
+}
+
+// Minimal HTML escaper — used to safely interpolate user-controlled values
+// (owner.name, tenant_name) into the weekly summary email body. Owner name is
+// owner-set so this is defence in depth against self-XSS / HTML-injection in
+// the email client, not a cross-user attack vector.
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // Weekly summary email to every owner. Records an in-app notification AND sends
@@ -61,23 +92,28 @@ async function weeklySummary(req, res) {
     if (process.env.RESEND_API_KEY) {
       try {
         const fromEmail = process.env.RESEND_FROM_EMAIL || 'Ledgerly <onboarding@resend.dev>';
+        // SECURITY: escape owner.name + tenant_name before interpolating into
+        // the HTML email body — they're user-controlled and an email client
+        // that renders HTML would otherwise execute any embedded script tag.
+        // Numbers (s.payments / s.collected / s.students) come from SQL COUNT
+        // / SUM over the tenant's own data, so they need no escaping.
         await getResend().emails.send({
           from: fromEmail,
           to: owner.email,
           subject: `Weekly summary for ${owner.tenant_name}`,
           html: `<div style="font-family:sans-serif;max-width:500px;margin:auto">
-            <h2 style="color:#14213D">Hi ${owner.name},</h2>
-            <p>Here's your weekly summary for <strong>${owner.tenant_name}</strong>:</p>
+            <h2 style="color:#14213D">Hi ${escapeHtml(owner.name)},</h2>
+            <p>Here's your weekly summary for <strong>${escapeHtml(owner.tenant_name)}</strong>:</p>
             <ul>
-              <li>Payments collected: <strong>${s.payments}</strong></li>
+              <li>Payments collected: <strong>${Number(s.payments || 0)}</strong></li>
               <li>Total collected: <strong>\u20A6${Number(s.collected || 0).toLocaleString('en-NG')}</strong></li>
-              <li>Active students: <strong>${s.students}</strong></li>
+              <li>Active students: <strong>${Number(s.students || 0)}</strong></li>
             </ul>
             <p style="color:#5B5B54;margin-top:20px;font-size:12px">Log in to Ledgerly for full details.</p>
           </div>`,
         });
       } catch (emailError) {
-        logger.error({ err: emailError.message, email: owner.email, msg: 'Weekly summary email failed' });
+        logger.error({ err: emailError.message, msg: 'Weekly summary email failed' });
       }
     }
     logger.info({ email: owner.email, msg: 'Weekly summary queued (notification + email)' });

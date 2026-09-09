@@ -67,7 +67,15 @@ app.set('trust proxy', 1);
 
 app.use(securityHeaders);
 app.use(corsMiddleware);
-app.use(express.json({ limit: '100kb' }));
+// SECURITY: the `verify` hook stashes the raw body bytes on each request so the
+// Paystack webhook handler can recompute the HMAC-SHA512 signature over the
+// exact bytes Paystack sent (JSON.stringify of a parsed body would not be
+// byte-identical to the original wire payload). The memory cost is one Buffer
+// per in-flight request, bounded by the 100kb body limit below.
+app.use(express.json({
+  limit: '100kb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 app.use(cookieParser());
 
 // Use morgan for HTTP request logging, piped through pino in production

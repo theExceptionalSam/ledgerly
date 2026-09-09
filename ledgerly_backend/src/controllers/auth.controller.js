@@ -4,6 +4,7 @@ const db = require('../db');
 const { signAccessToken, newRefreshToken, hashRefreshToken } = require('../utils/tokens');
 const { recordAudit } = require('../utils/audit');
 const { issueVerificationCode, verifyCode } = require('../utils/otp');
+const logger = require('../utils/logger');
 
 // Explicit opt-in for dev OTP exposure. NODE_ENV=production with a preview
 // environment should NEVER leak OTPs — only this explicit flag does.
@@ -241,7 +242,13 @@ async function forgotPassword(req, res) {
     VALUES ($1, $2, $3, $4, $5)
   `, [randomUUID(), user.tenant_id, email.toLowerCase(), tokenHash, expiresAt]);
 
-  console.log(`[Password Reset] Token for ${email}: ${token}`);
+  // SECURITY: the previous `console.log` printed the reset token in plaintext
+  // to stdout — anyone with log access could redeem it within the 30-minute
+  // window and take over the account. Only emit via the structured logger, and
+  // only when the explicit dev flag is set.
+  if (showDevOtp) {
+    logger.warn({ email, resetToken: token, msg: 'Password reset token issued (dev mode — LEDGERLY_DEV_SHOW_OTP=true)' });
+  }
   // TODO: email the token via Resend once a verified domain is configured.
 
   res.json({ ok: true, ...(showDevOtp ? { devToken: token } : {}) });

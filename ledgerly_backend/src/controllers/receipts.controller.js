@@ -172,8 +172,10 @@ async function issueReceipt(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
     res.send(pdfBuffer);
   } catch (err) {
-    logger.error({ err: err.message, stack: err.stack, msg: 'PDF generation failed' });
-    res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
+    // SECURITY: don't leak the internal error (PDF generator / font error) to
+    // the client — log the full detail server-side, surface a generic message.
+    logger.error({ err: err.message, stack: err.stack, msg: 'Receipt PDF generation failed' });
+    res.status(500).json({ error: 'Could not generate receipt PDF. Please try again or contact support.' });
   }
 }
 
@@ -320,8 +322,10 @@ async function emailReceipt(req, res) {
       branding: { logoDataUrl: tenant.logo_data_url, footerText: tenant.receipt_footer },
     });
   } catch (err) {
+    // SECURITY: don't leak the internal error (PDF generator / font error) to
+    // the client — log the full detail server-side, surface a generic message.
     logger.error({ err: err.message, stack: err.stack, msg: 'Receipt PDF generation failed for email' });
-    return res.status(500).json({ error: 'Could not generate receipt PDF: ' + err.message });
+    return res.status(500).json({ error: 'Could not generate receipt PDF. Please try again or contact support.' });
   }
 
   // 6. Send via Resend. The from address falls back to Resend's shared test
@@ -358,8 +362,10 @@ async function emailReceipt(req, res) {
       attachments: [{ filename: `${receipt.receipt_number}.pdf`, content: pdfBuffer }],
     });
   } catch (emailError) {
+    // SECURITY: don't leak the upstream Resend error (which can include
+    // transport details / request IDs) to the client — log server-side.
     logger.error({ err: emailError.message, stack: emailError.stack, msg: 'Failed to email receipt via Resend' });
-    return res.status(502).json({ error: 'Email delivery failed: ' + emailError.message });
+    return res.status(502).json({ error: 'Email delivery failed. Please try again or download the receipt instead.' });
   }
 
   // 7. Audit + respond. The audit row records the recipient so a future

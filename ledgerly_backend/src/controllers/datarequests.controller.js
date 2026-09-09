@@ -91,8 +91,11 @@ async function requestExport(req, res) {
     res.status(201).json({ id, status: 'completed' });
   } catch (err) {
     await db.query(`UPDATE data_requests SET status = 'failed', processed_at = now() WHERE id = $1`, [id]);
-    logger.error({ err: err.message, msg: 'Data export failed' });
-    res.status(500).json({ error: 'Data export failed: ' + err.message });
+    // SECURITY: don't leak the internal error message to the client — it could
+    // reveal DB schema details, file paths, or stack fragments. Log the full
+    // detail server-side via the structured logger; surface a generic message.
+    logger.error({ err: err.message, stack: err.stack, msg: 'Data export failed' });
+    res.status(500).json({ error: 'Data export failed. Please try again or contact support.' });
   }
 }
 

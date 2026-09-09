@@ -2,20 +2,25 @@ const { Router } = require('express');
 const { body, param } = require('express-validator');
 const { validate, asyncHandler } = require('../middleware/validate');
 const { requireParent } = require('../middleware/auth');
+const { authLimiter } = require('../middleware/security');
 const ctrl = require('../controllers/parents.controller');
 const paymentsOnlineCtrl = require('../controllers/payments_online.controller');
 
 const router = Router();
 
-// Public — register + login. Must be mounted before requirePasswordNotForced.
-router.post('/register', [
+// SECURITY: parent register + login are public, so they need the same brute-force
+// protection as staff auth (50 attempts / 15 min per IP). Without this, the
+// global apiLimiter (120/min) alone would let an attacker guess parent phones +
+// passwords far too quickly. Parent /link-child and the read endpoints below
+// stay on the per-tenant limiter because they require a valid parent token.
+router.post('/register', authLimiter, [
   body('phone').trim().matches(/^[+0-9][0-9\s-]{6,19}$/).withMessage('Enter a valid phone number'),
   body('name').trim().isLength({ min: 2, max: 120 }),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('studentId').isUUID(),
 ], validate, asyncHandler(ctrl.register));
 
-router.post('/login', [
+router.post('/login', authLimiter, [
   body('phone').trim().notEmpty(),
   body('password').notEmpty(),
 ], validate, asyncHandler(ctrl.login));
