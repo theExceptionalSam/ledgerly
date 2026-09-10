@@ -156,8 +156,33 @@ app.use('/api/v1/reconciliation', reconciliationRoutes);
 // Swagger UI — API documentation. Mounted after all routes so it doesn't
 // shadow any real /api/docs endpoint, and before the 404 handler so the UI
 // itself responds 200 (instead of falling through to "Not found").
-// No auth — the spec contains no secrets (just request/response shapes).
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, { explorer: true }));
+//
+// SECURITY: gated behind SWAGGER_ACCESS_TOKEN so the API contract (endpoint
+// shapes, request/response schemas) isn't publicly discoverable. Fail-closed:
+// if the env var is unset, ALL requests are rejected with 401. Access via:
+//   * query param ?token=xxx   (bookmarkable, used by the Swagger UI itself)
+//   * Authorization: Bearer xxx (for API tools / programmatic access)
+// The token is shared with the platform operator — set it to a random secret
+// in production (e.g. `openssl rand -hex 32`).
+app.use('/api/docs', (req, res, next) => {
+  const token = req.query.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!process.env.SWAGGER_ACCESS_TOKEN || token !== process.env.SWAGGER_ACCESS_TOKEN) {
+    return res.status(401).type('text').send('API docs are protected. Add ?token=YOUR_TOKEN to the URL.');
+  }
+  next();
+}, swaggerUi.serve, swaggerUi.setup(specs, { explorer: true }));
+
+// CSP violation reporting endpoint — browsers POST violation reports here when
+// a `report-uri` / `report-to` directive is set in the Content-Security-Policy
+// header (see src/middleware/security.js). Logged via the structured logger so
+// violations are searchable in the log aggregator; not acted on automatically.
+// Could integrate with Sentry in the future via `Sentry.captureMessage`.
+// Uses a dedicated body parser with `type: 'application/csp-report'` because
+// the global `express.json()` middleware only parses `application/json`.
+app.post('/api/csp-report', express.json({ type: 'application/csp-report', limit: '64kb' }), (req, res) => {
+  logger.warn({ msg: 'CSP violation', report: req.body });
+  res.status(204).end();
+});
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

@@ -151,22 +151,27 @@ async function login(req, res) {
   if (!user) return genericError();
 
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
-    return res.status(423).json({ error: 'Account temporarily locked due to repeated failed attempts. Try again later.' });
+    // Include remaining minutes so the user knows how long to wait. Ceiling
+    // (not rounding) so we never under-report the wait — "1 minute" when there
+    // are 30 seconds left would be misleading.
+    const remainingMs = new Date(user.locked_until).getTime() - Date.now();
+    const remainingMin = Math.max(1, Math.ceil(remainingMs / 60000));
+    return res.status(423).json({ error: `Account temporarily locked due to repeated failed attempts. Try again in ${remainingMin} minute(s).` });
   }
   if (user.status === 'disabled') return res.status(403).json({ error: 'This account has been disabled' });
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
-    const failedCount = user.failed_login_count + 1;
+    const failedCount = (user.failed_login_attempts || 0) + 1;
     const lockedUntil = failedCount >= MAX_FAILED_ATTEMPTS
       ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString()
       : null;
-    await db.query(`UPDATE users SET failed_login_count = $1, locked_until = $2 WHERE id = $3`, [failedCount, lockedUntil, user.id]);
+    await db.query(`UPDATE users SET failed_login_attempts = $1, locked_until = $2 WHERE id = $3`, [failedCount, lockedUntil, user.id]);
     await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'login_failed', entityType: 'user', entityId: user.id, ipAddress: req.ip });
     return genericError();
   }
 
-  await db.query(`UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = now() WHERE id = $1`, [user.id]);
+  await db.query(`UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = now() WHERE id = $1`, [user.id]);
   await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'login', entityType: 'user', entityId: user.id, ipAddress: req.ip });
 
   // An unverified school must confirm its email before it can sign in.
@@ -273,7 +278,9 @@ async function resetPassword(req, res) {
 
   const passwordHash = await bcrypt.hash(password, 12);
   await db.transaction(async (client) => {
-    await db.query(`UPDATE users SET password_hash = $1, failed_login_count = 0, locked_until = NULL WHERE id = $2`, [passwordHash, user.id], client);
+    // Reset lockout counters on password reset — the user has proven ownership
+    // of the email via the reset token, so any prior failed attempts are moot.
+    await db.query(`UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL WHERE id = $2`, [passwordHash, user.id], client);
     await db.query(`UPDATE verification_codes SET consumed_at = now() WHERE id = $1`, [record.id], client);
     // Revoke all existing refresh tokens so active sessions are forced to re-login.
     await db.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [user.id], client);

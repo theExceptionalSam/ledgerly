@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('owner','bursar','accountant','assistant')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
   email_verified INTEGER NOT NULL DEFAULT 0,
-  failed_login_count INTEGER NOT NULL DEFAULT 0,
+  -- Renamed from failed_login_count → failed_login_attempts in migration 024
+  -- for consistency with the parents table. auth.controller.js reads/writes
+  -- failed_login_attempts. The rename is conditional in the migration so this
+  -- base schema (which uses the new name) is the source of truth for fresh DBs.
+  failed_login_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TEXT,
   last_login_at TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

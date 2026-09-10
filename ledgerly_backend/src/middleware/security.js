@@ -13,6 +13,30 @@ const corsMiddleware = cors({
   credentials: true,
 });
 
+// Helmet configuration — defense-in-depth HTTP security headers.
+//
+// Notes on the directive choices:
+//   * defaultSrc 'self'         — only allow resources from our own origin by default.
+//   * scriptSrc 'self'          — no inline scripts, no eval, no external CDNs. The
+//                                  API serves JSON, not HTML, so there's no legit
+//                                  need for inline scripts.
+//   * styleSrc 'self' 'unsafe-inline' — inline styles are needed for the Swagger UI
+//                                  (it injects <style> tags). 'unsafe-inline' for
+//                                  styles is low-risk (CSS can't execute JS).
+//   * imgSrc 'self' data:       — allow data: URIs for inline images (logo_data_url
+//                                  on tenants is stored as a data URI).
+//   * objectSrc 'none'          — block <object>/<embed>/<applet> (Flash/Java plugins).
+//   * frameAncestors 'none'     — prevent the API responses from being framed
+//                                  (clickjacking). Combined with X-Frame-Options: DENY
+//                                  below for legacy-browser support.
+//   * baseUri 'self'            — prevent <base> tag hijacking.
+//   * formAction 'self'         — prevent forms from submitting to external origins.
+//   * reportUri '/api/csp-report' — browsers POST violation reports here. Enforced
+//                                  (reportOnly: false) — violations are blocked AND
+//                                  reported. The endpoint is in src/server.js.
+//
+// `reportOnly: false` is the default; stating it explicitly documents that we
+// want violations BLOCKED, not just reported.
 const securityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -22,10 +46,47 @@ const securityHeaders = helmet({
       imgSrc: ["'self'", 'data:'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      reportUri: ['/api/csp-report'],
     },
+    reportOnly: false,
   },
+  // COOP: same-origin — isolates the browsing-context group so a popup opened by
+  // an attacker can't reference `window.opener` (prevents window-control attacks
+  // like tabnabbing and some Spectre-style cross-origin reads).
+  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  // CORP: cross-origin — needed because receipt PDFs and exported files are
+  // downloaded cross-origin (Vercel frontend → Render backend). 'cross-origin'
+  // allows other origins to load the resources; 'same-origin' would break
+  // downloads when the frontend is on a different domain.
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Referrer-Policy: no-referrer — never leak the full URL (which may contain
+  // tokens in the query string, e.g. ?token=xxx for Swagger) to external sites
+  // via the Referer header.
   referrerPolicy: { policy: 'no-referrer' },
+  // HSTS — force HTTPS for 1 year, including subdomains, with preload. The
+  // preload directive opts the domain into the browser HSTS preload list (so
+  // even the FIRST visit uses HTTPS). Submit the domain at
+  // https://hstspreload.org after deploying. 1 year is the recommended max-age;
+  // don't go lower than 6 months (browsers treat short max-ages as
+  // non-preloadable).
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+  // X-Content-Type-Options: nosniff — prevent MIME-type sniffing (browsers
+  // sometimes sniff a response as HTML/JS even if the Content-Type says
+  // otherwise, which can lead to XSS if user-controlled bytes are served).
+  noSniff: true,
+  // X-Frame-Options: DENY — redundant with CSP frameAncestors 'none' but kept
+  // for legacy browsers (IE11, old Android WebViews) that don't understand
+  // CSP frame-ancestors.
+  frameguard: { action: 'deny' },
+  // Remove the X-Powered-By header (default Express sets it to "Express",
+  // which fingerprints the server version for attackers).
+  hidePoweredBy: true,
 });
 
 // Strict limiter for authentication endpoints — slows down credential stuffing and brute force

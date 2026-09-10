@@ -13,6 +13,14 @@ const { recordAudit } = require('../utils/audit');
 
 const REFRESH_COOKIE = 'parent_refresh_token';
 
+// Account lockout — mirrors the staff login in auth.controller.js. After 5
+// failed attempts the account is locked for 15 minutes. The counter resets on
+// a successful login. The 50/min auth rate limiter (src/middleware/security.js)
+// is the first line of defense against brute force; this is the second line —
+// it caps the damage an attacker can do even if they rotate IPs.
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
+
 async function register(req, res) {
   const { phone, name, password, studentId } = req.body;
 
@@ -61,10 +69,35 @@ async function login(req, res) {
   const { phone, password } = req.body;
   const { rows } = await db.query(`SELECT * FROM parents WHERE phone = $1`, [phone]);
   const parent = rows[0];
-  if (!parent) return res.status(401).json({ error: 'Incorrect phone or password' });
+  // Constant-shaped response whether the parent exists or not, to avoid user
+  // enumeration via the login endpoint. An attacker probing phone numbers gets
+  // the same 401 whether the number is registered or not.
+  const genericError = () => res.status(401).json({ error: 'Incorrect phone or password' });
+  if (!parent) return genericError();
+
+  // Lockout check — only for existing parents (so a locked account can't be
+  // enumerated by comparing response shapes). parents.locked_until is TIMESTAMPTZ
+  // (migration 024), so pg returns a JS Date and we can compare directly.
+  if (parent.locked_until && parent.locked_until > new Date()) {
+    const remainingMs = parent.locked_until.getTime() - Date.now();
+    const remainingMin = Math.max(1, Math.ceil(remainingMs / 60000));
+    return res.status(423).json({ error: `Account temporarily locked due to repeated failed attempts. Try again in ${remainingMin} minute(s).` });
+  }
 
   const valid = parent.password_hash && await bcrypt.compare(password, parent.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Incorrect phone or password' });
+  if (!valid) {
+    const failedCount = (parent.failed_login_attempts || 0) + 1;
+    const lockedUntil = failedCount >= MAX_FAILED_ATTEMPTS
+      ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString()
+      : null;
+    await db.query(`UPDATE parents SET failed_login_attempts = $1, locked_until = $2 WHERE id = $3`, [failedCount, lockedUntil, parent.id]);
+    await recordAudit({ tenantId: parent.tenant_id, actorUserId: null, action: 'login_failed', entityType: 'parent', entityId: parent.id, ipAddress: req.ip });
+    return genericError();
+  }
+
+  // Success — clear the lockout counters.
+  await db.query(`UPDATE parents SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`, [parent.id]);
+  await recordAudit({ tenantId: parent.tenant_id, actorUserId: null, action: 'login', entityType: 'parent', entityId: parent.id, ipAddress: req.ip });
 
   const accessToken = signParentToken({ id: parent.id, tenant_id: parent.tenant_id });
   res.json({ accessToken, parent: { id: parent.id, phone: parent.phone, name: parent.name, tenantId: parent.tenant_id } });
