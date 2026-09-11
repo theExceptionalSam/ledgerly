@@ -1146,3 +1146,71 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   .reversal-actions { align-items: flex-end; }
 }
 
+
+/* ---------- Dashboard: Quick Actions ---------- */
+.quick-actions-card { padding: 20px; }
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.quick-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.quick-action-btn:hover {
+  border-color: var(--navy);
+  background: #F0F4FA;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(20,33,61,0.08);
+}
+.quick-action-icon { font-size: 24px; }
+.quick-action-label { font-size: 13px; font-weight: 600; color: var(--navy); }
+
+/* ---------- Dashboard: Needs Attention ---------- */
+.needs-attention-card { border-left: 4px solid #C77D22; }
+.needs-attention-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.needs-attention-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 8px;
+}
+.needs-attention-icon { font-size: 20px; flex-shrink: 0; }
+.needs-attention-body { flex: 1; }
+.needs-attention-msg { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.needs-attention-action {
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0 0;
+  text-decoration: underline;
+}
+
+/* ---------- Dashboard: responsive ---------- */
+@media (max-width: 639px) {
+  .quick-actions-grid { grid-template-columns: repeat(2, 1fr); }
+  .quick-action-btn { padding: 12px 8px; }
+  .quick-action-icon { font-size: 20px; }
+  .quick-action-label { font-size: 12px; }
+  .needs-attention-item { flex-direction: column; gap: 6px; }
+  .needs-attention-icon { font-size: 18px; }
+}
+
+@media (max-width: 379px) {
+  .quick-actions-grid { grid-template-columns: 1fr; }
+}
