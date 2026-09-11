@@ -11,7 +11,8 @@ async function listSessions(req, res) {
     SELECT s.*, (
       SELECT json_agg(json_build_object(
         'id', t.id, 'name', t.name, 'is_current', t.is_current,
-        'start_date', t.start_date, 'end_date', t.end_date, 'session_id', t.session_id
+        'start_date', t.start_date, 'end_date', t.end_date, 'session_id', t.session_id,
+        'closed_at', t.closed_at
       ) ORDER BY t.created_at)
       FROM terms t WHERE t.session_id = s.id
     ) AS terms

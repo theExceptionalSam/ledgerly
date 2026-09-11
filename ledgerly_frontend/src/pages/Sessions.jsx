@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useTerm } from "../context/TermContext";
+import { useAuth } from "../context/AuthContext";
 
 export default function Terms() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const { reload: reloadTerms } = useTerm();
   const [sessions, setSessions] = useState([]);
   const [showAddSession, setShowAddSession] = useState(false);
   const [showAddTerm, setShowAddTerm] = useState(false);
   const [editingTerm, setEditingTerm] = useState(null);
+  const [carryOverTerm, setCarryOverTerm] = useState(null);
   const [error, setError] = useState("");
 
   const load = () => {
@@ -62,6 +66,23 @@ export default function Terms() {
     load();
   };
 
+  // Close/reopen a term — owner-only. The backend re-checks the role, so the
+  // button gating here is just UX. Closing a term blocks new payments against
+  // it (see payments.controller.recordPayment); a closed term can then have
+  // its outstanding balances carried over to a new term.
+  const closeTerm = async (id, name) => {
+    if (!confirm(`Close "${name}"? New payments cannot be recorded against a closed term. You can carry over outstanding balances to a new term afterwards.`)) return;
+    try { await api.post(`/terms/${id}/close`, {}); load(); }
+    catch (e) { setError(e.message); }
+  };
+
+  const reopenTerm = async (id, name) => {
+    const reason = prompt(`Reopen "${name}"? Enter a reason (required):`, "");
+    if (!reason || !reason.trim()) return;
+    try { await api.post(`/terms/${id}/reopen`, { reason: reason.trim() }); load(); }
+    catch (e) { setError(e.message); }
+  };
+
   return (
     <div>
       <div className="page-intro">
@@ -103,11 +124,21 @@ export default function Terms() {
                     <div className="term-info">
                       <span className="term-name">{t.name}</span>
                       {t.is_current ? <span className="badge" style={{ color: "#1B7A43", background: "#E7F4EC", marginLeft: 8 }}>Current</span> : null}
+                      {t.closed_at ? <span className="badge" style={{ color: "#8B5A00", background: "#FFF4E0", marginLeft: 8 }}>Closed</span> : null}
                       <span className="term-dates">{t.start_date || "—"} to {t.end_date || "—"}</span>
                     </div>
                     <div className="term-actions">
                       <button className="link-btn" onClick={() => setEditingTerm(t)}>Edit</button>
                       {!t.is_current && <button className="link-btn" onClick={() => setCurrentTerm(t.id)}>Set current</button>}
+                      {isOwner && !t.closed_at && !t.is_current && (
+                        <button className="link-btn" style={{ color: "#8B5A00" }} onClick={() => closeTerm(t.id, t.name)}>Close</button>
+                      )}
+                      {isOwner && t.closed_at && (
+                        <button className="link-btn" style={{ color: "#1B7A43" }} onClick={() => reopenTerm(t.id, t.name)}>Reopen</button>
+                      )}
+                      {isOwner && t.closed_at && (
+                        <button className="btn-primary" onClick={() => setCarryOverTerm(t)}>Carry Over</button>
+                      )}
                       <button className="link-btn" style={{ color: "#B3261E" }} onClick={() => deleteTerm(t.id, t.name)}>Delete</button>
                     </div>
                   </div>
@@ -127,6 +158,14 @@ export default function Terms() {
           term={editingTerm}
           onClose={() => setEditingTerm(null)}
           onSave={async (fields) => { await editTerm(editingTerm.id, fields); setEditingTerm(null); }}
+        />
+      )}
+      {carryOverTerm && (
+        <CarryOverModal
+          sourceTerm={carryOverTerm}
+          sessions={sessions}
+          onClose={() => setCarryOverTerm(null)}
+          onDone={load}
         />
       )}
     </div>
@@ -237,6 +276,160 @@ function EditTermModal({ term, onClose, onSave }) {
         <button className="btn-primary btn-full" disabled={!name.trim() || busy} onClick={submit}>
           {busy ? "Saving..." : "Save changes"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Carry-over modal — for closed source terms, lets the owner preview students
+// with outstanding balances and carry them into a chosen target (open) term
+// as a new "Outstanding (Carried Over)" fee assignment. Calls
+//   GET  /carry-over/preview?sourceTermId=...&targetTermId=...
+//   POST /carry-over  { sourceTermId, targetTermId }
+// The target term dropdown includes every term that is NOT the source (closed
+// terms included, but the backend rejects closed targets with a 400 — the
+// current term is preselected to nudge the owner toward the right choice).
+function CarryOverModal({ sourceTerm, sessions, onClose, onDone }) {
+  // Flatten all terms across sessions into a single list, excluding the source.
+  const allTerms = sessions.flatMap((s) =>
+    (s.terms || []).map((t) => ({ ...t, sessionName: s.name }))
+  ).filter((t) => t.id !== sourceTerm.id);
+
+  const currentTerm = allTerms.find((t) => t.is_current) || allTerms.find((t) => !t.closed_at) || allTerms[0];
+  const [targetTermId, setTargetTermId] = useState(currentTerm?.id || "");
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const loadPreview = async (termId) => {
+    if (!termId) { setPreview(null); return; }
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const data = await api.get(`/carry-over/preview?sourceTermId=${sourceTerm.id}&targetTermId=${termId}`);
+      setPreview(data);
+    } catch (e) {
+      setPreviewError(e.message);
+      setPreview(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPreview(targetTermId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetTermId, sourceTerm.id]);
+
+  const confirm = async () => {
+    setBusy(true); setError(""); setResult(null);
+    try {
+      const data = await api.post("/carry-over", { sourceTermId: sourceTerm.id, targetTermId });
+      setResult(data);
+      // Refresh the page so the new term's assignments reflect the carry-over.
+      onDone?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Carry over outstanding balances</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        {error && <div className="form-error">{error}</div>}
+        {result && (
+          <div className="form-success" style={{ color: "#1B7A43", background: "#E7F4EC", padding: 12, borderRadius: 6, marginBottom: 12 }}>
+            {result.message || `${result.carriedOver} student(s) carried over.`}
+            {result.skipped > 0 && <div style={{ fontSize: 13, marginTop: 4 }}>{result.skipped} already had a carry-over assignment and were skipped.</div>}
+          </div>
+        )}
+
+        <label>Source term (closed)</label>
+        <div style={{ padding: "8px 10px", background: "#FFF4E0", border: "1px solid #E6C98C", borderRadius: 6, marginBottom: 12 }}>
+          <strong>{sourceTerm.name}</strong>
+          {sourceTerm.session_id && (
+            <div style={{ fontSize: 13, color: "#6B5A3E" }}>
+              {allTerms.find((t) => t.id === sourceTerm.id)?.sessionName || "—"}
+            </div>
+          )}
+        </div>
+
+        <label htmlFor="carry-over-target">Target term (open)</label>
+        <select
+          id="carry-over-target"
+          value={targetTermId}
+          onChange={(e) => setTargetTermId(e.target.value)}
+          disabled={!!result}
+        >
+          {allTerms.length === 0 && <option value="">No other terms available</option>}
+          {allTerms.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.sessionName}){t.is_current ? " — current" : t.closed_at ? " — closed" : ""}
+            </option>
+          ))}
+        </select>
+
+        <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600 }}>
+          {previewLoading ? "Loading preview…" : previewError ? "Preview unavailable" : `Students with outstanding balances (${preview?.count || 0})`}
+        </div>
+
+        {previewError && <div className="form-error">{previewError}</div>}
+
+        {!previewLoading && preview && preview.count === 0 && (
+          <div className="empty-state" style={{ padding: 16 }}>
+            No students with outstanding balances in this term — nothing to carry over.
+          </div>
+        )}
+
+        {!previewLoading && preview && preview.count > 0 && (
+          <div style={{ border: "1px solid #E5E7EB", borderRadius: 6, maxHeight: 280, overflowY: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F9FAFB", textAlign: "left", position: "sticky", top: 0 }}>
+                  <th style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>Student</th>
+                  <th style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>Class</th>
+                  <th style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", textAlign: "right" }}>Expected</th>
+                  <th style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", textAlign: "right" }}>Paid</th>
+                  <th style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", textAlign: "right" }}>Outstanding</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.students.map((s) => (
+                  <tr key={s.studentId}>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid #F3F4F6" }}>{s.studentName}</td>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid #F3F4F6" }}>{s.class || "—"}</td>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid #F3F4F6", textAlign: "right" }}>{fmt(s.expected)}</td>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid #F3F4F6", textAlign: "right" }}>{fmt(s.paid)}</td>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid #F3F4F6", textAlign: "right", fontWeight: 600, color: "#B3261E" }}>{fmt(s.outstanding)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: "#F9FAFB", fontWeight: 600 }}>
+                  <td style={{ padding: "8px 10px" }} colSpan={4}>Total outstanding</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", color: "#B3261E" }}>{fmt(preview.totalOutstanding)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button className="btn-primary btn-full" onClick={confirm} disabled={busy || !targetTermId || !!result || previewLoading || preview?.count === 0}>
+            {busy ? "Carrying over..." : "Confirm Carry Over"}
+          </button>
+          <button className="btn-danger-ghost" onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   );
