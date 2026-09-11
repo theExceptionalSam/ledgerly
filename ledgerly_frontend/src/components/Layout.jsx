@@ -118,7 +118,7 @@ export default function Layout({ children }) {
         {user && (
           <nav className="app-nav app-desktop-only" aria-label="Primary">
             {/* Core links — always visible */}
-            <NavLink to="/" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Dashboard</NavLink>
+            <NavLink to="/dashboard" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Dashboard</NavLink>
             <NavLink to="/students" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Students</NavLink>
             <NavLink to="/finance" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Finance</NavLink>
             {canViewReceipts && (
@@ -194,7 +194,7 @@ export default function Layout({ children }) {
         <div className={"app-nav-mobile" + (menuOpen ? " is-open" : "")} id="app-nav-mobile">
           <div className="app-nav-mobile-scroll">
             <div className="app-nav-mobile-group">
-              <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Dashboard</NavLink>
+              <NavLink to="/dashboard" end onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Dashboard</NavLink>
               <NavLink to="/students" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Students</NavLink>
               <NavLink to="/finance" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Finance</NavLink>
               {canViewReceipts && (
