@@ -36,8 +36,7 @@ export default function Landing() {
       <section className="landing-hero">
         <div className="landing-hero-inner">
           <div className="landing-logo-row">
-            <div className="landing-logo-box">L</div>
-            <span className="landing-logo-text">Ledgerly</span>
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="landing-logo-img" width="200" height="58" />
           </div>
           <h1>Collect school fees faster.</h1>
           <h1 className="landing-hero-green">Track every naira.</h1>
@@ -46,7 +45,7 @@ export default function Landing() {
             No more exercise books. No more lost receipts. No more guessing who owes you money.
           </p>
           <div className="landing-hero-cta">
-            <Link to={user ? "/" : "/register"} className="btn-primary landing-cta-btn">
+            <Link to={user ? "/dashboard" : "/register"} className="btn-primary landing-cta-btn">
               {user ? "Go to dashboard →" : "Register your school — FREE first term →"}
             </Link>
             {!user && (
@@ -251,7 +250,7 @@ export default function Landing() {
           <h2>Ready to collect fees faster?</h2>
           <p>Start your first term <strong>FREE</strong>. No risk, no commitment.</p>
           <p className="landing-cta-note">If Ledgerly doesn't save you time and help you collect more fees, you walk away at no cost.</p>
-          <Link to={user ? "/" : "/register"} className="btn-primary landing-cta-btn">
+          <Link to={user ? "/dashboard" : "/register"} className="btn-primary landing-cta-btn">
             {user ? "Go to dashboard →" : "Register your school →"}
           </Link>
           <p className="landing-cta-url">ledgerly-xi-ochre.vercel.app</p>
@@ -262,8 +261,7 @@ export default function Landing() {
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <div className="landing-footer-brand">
-            <div className="landing-logo-box landing-footer-logo">L</div>
-            <span>Ledgerly</span>
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="landing-footer-logo-img" width="140" height="40" />
           </div>
           <p>School Fee Management Made Simple</p>
           <div className="landing-footer-links">

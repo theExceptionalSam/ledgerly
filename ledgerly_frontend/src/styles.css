@@ -1251,7 +1251,7 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   gap: 14px;
   margin-bottom: 40px;
 }
-.landing-logo-box {
+.landing-logo-img {
   width: 56px; height: 56px;
   background: #fff;
   border-radius: 12px;
@@ -1262,11 +1262,6 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   font-size: 30px;
   font-weight: 700;
   color: #14213D;
-}
-.landing-logo-text {
-  font-family: Georgia, serif;
-  font-size: 32px;
-  font-weight: 700;
 }
 .landing-hero h1 {
   font-family: Georgia, serif;
@@ -1600,12 +1595,6 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   gap: 10px;
   margin-bottom: 8px;
 }
-.landing-footer-logo {
-  width: 36px !important;
-  height: 36px !important;
-  font-size: 20px !important;
-  border-radius: 8px;
-}
 .landing-footer-brand span {
   font-family: Georgia, serif;
   font-size: 22px;
@@ -1671,4 +1660,16 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   }
 
   .landing-cta-btn { font-size: 16px !important; padding: 14px 20px !important; width: 100%; }
+}
+
+/* ---- Landing page logo images ---- */
+.landing-logo-img {
+  height: 58px;
+  width: auto;
+  border-radius: 8px;
+}
+.landing-footer-logo-img {
+  height: 40px;
+  width: auto;
+  border-radius: 6px;
 }
