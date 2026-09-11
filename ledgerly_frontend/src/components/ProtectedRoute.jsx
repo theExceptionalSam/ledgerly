@@ -6,7 +6,8 @@ export default function ProtectedRoute({ children, roles }) {
 
   if (initializing) return <div className="page-loading">Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  // Redirect to dashboard (not landing page) when the user's role doesn't match
+  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
 
   return children;
 }

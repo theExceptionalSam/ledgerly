@@ -95,7 +95,7 @@ export default function App() {
                 </ProtectedRoute>
               } />
               <Route path="/fee-heads" element={
-                <ProtectedRoute roles={["owner", "bursar"]}>
+                <ProtectedRoute roles={["owner", "bursar", "accountant"]}>
                   <Layout><FeeHeads /></Layout>
                 </ProtectedRoute>
               } />

@@ -9,16 +9,16 @@ router.use(requireAuth);
 
 router.get('/', asyncHandler(ctrl.listFeeHeads));
 
-router.post('/', requireRole('owner', 'bursar'), [
+router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('name').trim().isLength({ min: 1, max: 80 }),
 ], validate, asyncHandler(ctrl.createFeeHead));
 
-router.post('/:id/deactivate', requireRole('owner', 'bursar'), [
+router.post('/:id/deactivate', requireRole('owner', 'bursar', 'accountant'), [
   param('id').isUUID(),
 ], validate, asyncHandler(ctrl.deactivateFeeHead));
 
 // Phase 4: bulk assign a fee head to every student in a class
-router.post('/:id/bulk-assign', requireRole('owner', 'bursar'), [
+router.post('/:id/bulk-assign', requireRole('owner', 'bursar', 'accountant'), [
   param('id').isUUID(),
   body('termId').isUUID(),
   body('class').trim().isLength({ min: 1, max: 60 }),
