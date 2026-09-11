@@ -197,16 +197,15 @@ async function refresh(req, res) {
   // CSRF protection: only accept refresh requests from allowed origins.
   // sameSite:'none' is required for cross-site cookies, so we can't rely on
   // the browser to block CSRF — we check the Origin header instead.
-  // Use the same default as src/middleware/security.js ('http://localhost:5173')
-  // and filter out empty strings: otherwise, when CORS_ORIGINS is unset,
-  // `('' ).split(',')` produces `['']`, the `allowedOrigins[0]` truthy guard
-  // fails, and the check is skipped entirely — letting ANY origin through.
+  // Allows any *.vercel.app origin (same as the CORS middleware) so Vercel
+  // URL renames and preview deployments don't break session restore.
   const origin = req.headers.origin;
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (origin && !allowedOrigins.includes(origin)) {
+  const isVercelOrigin = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin || '');
+  if (origin && !allowedOrigins.includes(origin) && !isVercelOrigin) {
     return res.status(403).json({ error: 'Origin not permitted' });
   }
 
