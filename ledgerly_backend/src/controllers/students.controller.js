@@ -82,11 +82,18 @@ async function listStudents(req, res) {
   const { tenantId } = req.user;
   const termId = await resolveTermId(tenantId, req.query.termId);
   const showArchived = req.query.status === 'archived';
+  // Optional boarding/day filter — when ?studentType=boarding (or =day) is
+  // present, the active list (and only the active list — the archived view
+  // doesn't honour this filter yet) is narrowed to students of that type.
+  // Untyped queries return both types (preserves backwards compatibility).
+  const studentTypeFilter = (req.query.studentType === 'boarding' || req.query.studentType === 'day')
+    ? req.query.studentType
+    : null;
 
   // --- Archived view (no pagination needed — archived lists are small) ---
   if (showArchived) {
     const { rows } = await db.query(`
-      SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact, s.status, s.created_at
+      SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact, s.status, s.student_type, s.created_at
       FROM students s
       WHERE s.tenant_id = $1 AND s.status = 'archived'
       ORDER BY s.name ASC
@@ -115,26 +122,44 @@ async function listStudents(req, res) {
   // The Students page already handles the "no current term" case by showing
   // status='unset', which matches this behaviour.
 
-  // Build the WHERE clause for search (server-side, case-insensitive)
+  // Build the WHERE clause for search + student_type filter (both
+  // server-side, case-insensitive). The placeholder numbering is dynamic
+  // because the search clause ($4) and the student_type clause ($5) are
+  // appended independently — keep them in lockstep with the count query
+  // below so the totals reconcile.
   let searchSql = '';
+  let typeSql = '';
   const params = [termId, termId, tenantId];
   if (search && search.trim()) {
-    searchSql = ` AND (s.name ILIKE $4 OR s.class ILIKE $4 OR s.admission_no ILIKE $4 OR s.guardian_contact ILIKE $4)`;
+    searchSql = ` AND (s.name ILIKE $${params.length + 1} OR s.class ILIKE $${params.length + 1} OR s.admission_no ILIKE $${params.length + 1} OR s.guardian_contact ILIKE $${params.length + 1})`;
     params.push(`%${search.trim()}%`);
   }
+  if (studentTypeFilter) {
+    typeSql = ` AND s.student_type = $${params.length + 1}`;
+    params.push(studentTypeFilter);
+  }
 
-  // Get total count for pagination
-  const countParams = search ? [tenantId, `%${search.trim()}%`] : [tenantId];
-  const countSql = search
-    ? `SELECT COUNT(*) AS total FROM students s WHERE s.tenant_id = $1 AND s.status = 'active' AND (s.name ILIKE $2 OR s.class ILIKE $2 OR s.admission_no ILIKE $2 OR s.guardian_contact ILIKE $2)`
-    : `SELECT COUNT(*) AS total FROM students s WHERE s.tenant_id = $1 AND s.status = 'active'`;
+  // Get total count for pagination — mirrors the WHERE clause above so the
+  // count reconciles with the page query (search + student_type filter).
+  const countParams = [tenantId];
+  let countSearchSql = '';
+  let countTypeSql = '';
+  if (search && search.trim()) {
+    countSearchSql = ` AND (s.name ILIKE $${countParams.length + 1} OR s.class ILIKE $${countParams.length + 1} OR s.admission_no ILIKE $${countParams.length + 1} OR s.guardian_contact ILIKE $${countParams.length + 1})`;
+    countParams.push(`%${search.trim()}%`);
+  }
+  if (studentTypeFilter) {
+    countTypeSql = ` AND s.student_type = $${countParams.length + 1}`;
+    countParams.push(studentTypeFilter);
+  }
+  const countSql = `SELECT COUNT(*) AS total FROM students s WHERE s.tenant_id = $1 AND s.status = 'active'${countSearchSql}${countTypeSql}`;
   const { rows: countRows } = await db.query(countSql, countParams);
   const total = parseInt(countRows[0].total, 10);
 
   // Get the page of students
   const pageParams = [...params, pageSize, offset];
   const { rows: students } = await db.query(`
-    SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact,
+    SELECT s.id, s.name, s.class, s.admission_no, s.guardian_contact, s.student_type,
       COALESCE((SELECT SUM(sfa.expected_amount - sfa.discount_amount)
                 FROM student_fee_assignments sfa
                 WHERE sfa.student_id = s.id AND sfa.term_id = $1), 0) AS expected,
@@ -142,7 +167,7 @@ async function listStudents(req, res) {
                 FROM payments p
                 WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0) AS paid
     FROM students s
-    WHERE s.tenant_id = $3 AND s.status = 'active'${searchSql}
+    WHERE s.tenant_id = $3 AND s.status = 'active'${searchSql}${typeSql}
     ORDER BY s.name ASC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, pageParams);
@@ -163,13 +188,20 @@ async function listStudents(req, res) {
 
 async function createStudent(req, res) {
   const { tenantId, id: userId } = req.user;
-  const { name, class: klass, admissionNo, guardianContact } = req.body;
+  const { name, class: klass, admissionNo, guardianContact, studentType } = req.body;
+
+  // Default to 'day' for backwards compatibility — the column is NOT NULL with
+  // a DEFAULT 'day' on the DB side, but we pass it explicitly so the audit
+  // trail reflects what was actually written (and so a malformed body never
+  // relies on the DB default). The CHECK constraint rejects anything outside
+  // {day, boarding}; the route validator whitelists those two values upstream.
+  const resolvedStudentType = studentType === 'boarding' ? 'boarding' : 'day';
 
   const id = randomUUID();
   await db.query(`
-    INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-  `, [id, tenantId, name, klass, admissionNo || null, guardianContact || null, userId]);
+    INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, student_type, created_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [id, tenantId, name, klass, admissionNo || null, guardianContact || null, resolvedStudentType, userId]);
 
   // Auto-sync fees: replicate the fee assignments that other students in the
   // same class already have for the current term. Non-fatal — if sync fails
@@ -186,25 +218,31 @@ async function createStudent(req, res) {
     console.error('[createStudent] autoSyncClassFees failed for', id, ':', e.message);
   }
 
-  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: feesSynced > 0 ? { feesAutoSynced: feesSynced } : undefined });
-  res.status(201).json({ id, feesSynced });
+  await recordAudit({ tenantId, actorUserId: userId, action: 'create', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: { studentType: resolvedStudentType, ...(feesSynced > 0 ? { feesAutoSynced: feesSynced } : {}) } });
+  res.status(201).json({ id, studentType: resolvedStudentType, feesSynced });
 }
 
 async function updateStudent(req, res) {
   const { tenantId, id: userId } = req.user;
   const { id } = req.params;
-  const { name, class: klass, admissionNo, guardianContact } = req.body;
+  const { name, class: klass, admissionNo, guardianContact, studentType } = req.body;
 
   const { rows } = await db.query(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   const existing = rows[0];
   if (!existing) return res.status(404).json({ error: 'Student not found' });
 
-  await db.query(`
-    UPDATE students SET name = $1, class = $2, admission_no = $3, guardian_contact = $4
-    WHERE id = $5 AND tenant_id = $6
-  `, [name, klass, admissionNo || null, guardianContact || null, id, tenantId]);
+  // Like createStudent: default to 'day' when the caller omits the field.
+  // The route validator whitelists {day, boarding, undefined}; anything else
+  // is rejected upstream so by the time we reach here `studentType` is either
+  // one of the two valid values or undefined (which falls through to 'day').
+  const resolvedStudentType = studentType === 'boarding' ? 'boarding' : 'day';
 
-  await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student', entityId: id, ipAddress: req.ip });
+  await db.query(`
+    UPDATE students SET name = $1, class = $2, admission_no = $3, guardian_contact = $4, student_type = $5
+    WHERE id = $6 AND tenant_id = $7
+  `, [name, klass, admissionNo || null, guardianContact || null, resolvedStudentType, id, tenantId]);
+
+  await recordAudit({ tenantId, actorUserId: userId, action: 'update', entityType: 'student', entityId: id, ipAddress: req.ip, metadata: { studentType: resolvedStudentType } });
   res.json({ ok: true });
 }
 

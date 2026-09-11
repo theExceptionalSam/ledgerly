@@ -17,4 +17,12 @@ router.get('/', [
   query('termId').optional().isUUID(),
 ], validate, asyncHandler(ctrl.getAgedDebtors));
 
+// GET /api/v1/aged-debtors/boarding?termId=<uuid>
+// Boarding-specific aged-debtors report — same shape as `/` but filtered to
+// students with student_type = 'boarding'. Used to surface boarding students
+// who haven't paid their boarding-related fees.
+router.get('/boarding', [
+  query('termId').optional().isUUID(),
+], validate, asyncHandler(ctrl.getBoardingReport));
+
 module.exports = router;

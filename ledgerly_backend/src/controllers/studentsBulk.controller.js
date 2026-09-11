@@ -27,6 +27,11 @@ const HEADER_ALIASES = {
   class: ['class', 'class name'],
   admissionNo: ['admission no', 'admission number', 'admissionno'],
   guardianContact: ['parent contact', 'guardian contact', 'parent phone', 'guardian phone', 'phone'],
+  // Student type column — accepts a human-readable label like "Boarding" /
+  // "Day" or the lowercase codes. Any unrecognised value (including a blank
+  // cell) falls through to 'day' so a legacy upload with no Type column still
+  // imports cleanly.
+  studentType: ['type', 'student type', 'boarding'],
 };
 
 function mapHeaders(headerRow) {
@@ -70,7 +75,8 @@ async function bulkUpload(req, res) {
   const limit = Math.min(rows.length - 1, 1000);
 
   // Pass 1: validate every row, collect the values for valid rows.
-  // Each row contributes 7 columns: (id, tenant_id, name, class, admission_no, guardian_contact, created_by).
+  // Each row contributes 8 columns: (id, tenant_id, name, class, admission_no,
+  // guardian_contact, student_type, created_by).
   const valueTuples = [];
   const params = [];
   for (let i = 1; i <= limit; i++) {
@@ -79,6 +85,12 @@ async function bulkUpload(req, res) {
     const klass = String(row[cols.class] ?? '').trim();
     const admissionNo = cols.admissionNo !== undefined ? String(row[cols.admissionNo] ?? '').trim() : '';
     const guardianContact = cols.guardianContact !== undefined ? String(row[cols.guardianContact] ?? '').trim() : '';
+    // Parse the optional Type column. Accepts "boarding" / "Boarding" / "day"
+    // / "Day" (case-insensitive). Anything else — including a blank cell or
+    // a missing column entirely — defaults to 'day', which matches the DB
+    // column's NOT NULL DEFAULT and keeps legacy uploads working unchanged.
+    const rawType = cols.studentType !== undefined ? String(row[cols.studentType] ?? '').trim().toLowerCase() : '';
+    const studentType = rawType === 'boarding' ? 'boarding' : 'day';
 
     const rowNumber = i + 1; // 1-based, matching what the user sees in Excel
     if (!name || !klass) {
@@ -97,21 +109,22 @@ async function bulkUpload(req, res) {
       klass.slice(0, 60),
       admissionNo.slice(0, 60) || null,
       guardianContact.slice(0, 120) || null,
+      studentType,
       userId
     );
   }
 
-  // Pass 2: one bulk INSERT for all valid rows. Each tuple is ($N..$N+6), numbered
-  // per-query starting at $1. A single INSERT is atomic on its own, so no
-  // explicit transaction is required.
+  // Pass 2: one bulk INSERT for all valid rows. Each tuple is ($N..$N+7),
+  // numbered per-query starting at $1. A single INSERT is atomic on its own,
+  // so no explicit transaction is required.
   if (params.length > 0) {
     const tuples = [];
     for (let i = 0; i < valueTuples.length; i++) {
-      const base = i * 7;
-      tuples.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`);
+      const base = i * 8;
+      tuples.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`);
     }
     const sql = `
-      INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, created_by)
+      INSERT INTO students (id, tenant_id, name, class, admission_no, guardian_contact, student_type, created_by)
       VALUES ${tuples.join(', ')}
     `;
     await db.query(sql, params);
@@ -142,8 +155,9 @@ async function bulkUpload(req, res) {
 // Generates a one-row example workbook users can fill in and re-upload.
 function bulkTemplate(req, res) {
   const ws = XLSX.utils.aoa_to_sheet([
-    ['Name', 'Class', 'Admission No', 'Parent Contact'],
-    ['Amaka Johnson', 'JSS 1', 'SUN/2026/001', '08031234567'],
+    ['Name', 'Class', 'Admission No', 'Parent Contact', 'Type'],
+    ['Amaka Johnson', 'JSS 1', 'SUN/2026/001', '08031234567', 'Day'],
+    ['Chinedu Eze', 'JSS 1', 'SUN/2026/002', '08039876543', 'Boarding'],
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Students');

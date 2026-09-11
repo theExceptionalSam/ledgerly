@@ -51,6 +51,7 @@ router.get('/', [
   query('search').optional().trim(),
   query('status').optional().isIn(['archived']),
   query('termId').optional().isUUID(),
+  query('studentType').optional().isIn(['day', 'boarding']),
 ], validate, asyncHandler(ctrl.listStudents));
 router.get('/bulk/template', asyncHandler(bulkCtrl.bulkTemplate));
 router.get('/export', exportLimiter, asyncHandler(async (req, res) => {
@@ -115,6 +116,7 @@ router.post('/', requireRole('owner', 'bursar', 'accountant'), [
   body('class').trim().isLength({ min: 1, max: 60 }),
   body('admissionNo').optional({ checkFalsy: true }).trim().isLength({ max: 60 }),
   body('guardianContact').optional({ checkFalsy: true }).trim().isLength({ max: 120 }),
+  body('studentType').optional().isIn(['day', 'boarding']),
 ], validate, asyncHandler(ctrl.createStudent));
 
 router.put('/:id', requireRole('owner', 'bursar', 'accountant'), [
@@ -123,6 +125,7 @@ router.put('/:id', requireRole('owner', 'bursar', 'accountant'), [
   body('class').trim().isLength({ min: 1, max: 60 }),
   body('admissionNo').optional({ checkFalsy: true }).trim().isLength({ max: 60 }),
   body('guardianContact').optional({ checkFalsy: true }).trim().isLength({ max: 120 }),
+  body('studentType').optional().isIn(['day', 'boarding']),
 ], validate, asyncHandler(ctrl.updateStudent));
 
 // Archive / restore / permanent-delete are owner-only. Bursars and accountants

@@ -118,4 +118,101 @@ async function getAgedDebtors(req, res) {
   });
 }
 
-module.exports = { getAgedDebtors };
+// Boarding-specific aged-debtors report.
+//
+// Identical to `getAgedDebtors` but the student set is narrowed to
+// `student_type = 'boarding'`. This is the view a bursar uses to see which
+// boarding students haven't paid their boarding-related fees — a frequent
+// operational concern because boarding fees are typically large and a single
+// non-payer ties up a dorm bed that could go to a paying student.
+//
+// Route: GET /aged-debtors/boarding?termId=
+async function getBoardingReport(req, res) {
+  const { tenantId } = req.user;
+  const { termId } = req.query;
+
+  // Resolve the term — default to the tenant's current term if none was
+  // requested. Same logic as getAgedDebtors; extracted here so the boarding
+  // report is self-contained (no shared helper to refactor).
+  let resolvedTermId = termId;
+  if (!resolvedTermId) {
+    const { rows: currentRows } = await db.query(
+      `SELECT id FROM terms WHERE tenant_id = $1 AND is_current = 1`,
+      [tenantId]
+    );
+    resolvedTermId = currentRows[0]?.id;
+  }
+  if (!resolvedTermId) {
+    return res.json({ buckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }, students: [], total: 0, referenceDate: null, termId: null, studentType: 'boarding' });
+  }
+
+  const { rows: termRows } = await db.query(
+    `SELECT end_date FROM terms WHERE id = $1 AND tenant_id = $2`,
+    [resolvedTermId, tenantId]
+  );
+  const termEndDate = termRows[0]?.end_date;
+  const referenceDate = termEndDate || new Date().toISOString().slice(0, 10);
+
+  // Same outstanding-fee query as getAgedDebtors, with the additional
+  // `s.student_type = 'boarding'` predicate. Inline literal is safe here
+  // (the value is a constant — never user input).
+  const { rows: students } = await db.query(`
+    SELECT s.id, s.name, s.class,
+           COALESCE(SUM(sfa.expected_amount - sfa.discount_amount), 0) AS expected,
+           COALESCE((SELECT SUM(p.amount) FROM payments p
+                     WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0) AS paid
+    FROM students s
+    LEFT JOIN student_fee_assignments sfa ON sfa.student_id = s.id AND sfa.term_id = $2
+    WHERE s.tenant_id = $1 AND s.status = 'active' AND s.student_type = 'boarding'
+    GROUP BY s.id, s.name, s.class
+    HAVING COALESCE(SUM(sfa.expected_amount - sfa.discount_amount), 0) >
+           COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.student_id = s.id AND p.term_id = $2 AND p.reversed = 0), 0)
+    ORDER BY s.class, s.name
+  `, [tenantId, resolvedTermId]);
+
+  const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+  const studentBreakdown = [];
+
+  for (const s of students) {
+    const expected = Number(s.expected);
+    const paid = Number(s.paid);
+    const outstanding = expected - paid;
+    if (outstanding <= 0) continue;
+
+    const ref = new Date(referenceDate);
+    const now = new Date();
+    const daysOverdue = Math.max(0, Math.floor((now - ref) / (1000 * 60 * 60 * 24)));
+
+    let bucket;
+    if (daysOverdue <= 30) bucket = '0-30';
+    else if (daysOverdue <= 60) bucket = '31-60';
+    else if (daysOverdue <= 90) bucket = '61-90';
+    else bucket = '90+';
+
+    buckets[bucket] += outstanding;
+    studentBreakdown.push({
+      studentId: s.id,
+      studentName: s.name,
+      class: s.class,
+      studentType: 'boarding',
+      expected,
+      paid,
+      outstanding,
+      daysOverdue,
+      bucket,
+    });
+  }
+
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0);
+
+  res.json({
+    termId: resolvedTermId,
+    referenceDate,
+    buckets,
+    total,
+    students: studentBreakdown,
+    studentType: 'boarding',
+  });
+}
+
+module.exports = { getAgedDebtors, getBoardingReport };

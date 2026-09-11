@@ -62,6 +62,7 @@ const dataExportRoutes = require('./routes/data-export.routes');
 const reconciliationRoutes = require('./routes/reconciliation.routes');
 const monitoringRoutes = require('./routes/monitoring.routes');
 const carryOverRoutes = require('./routes/carry-over.routes');
+const auditReportRoutes = require('./routes/audit-report.routes');
 
 const app = express();
 
@@ -163,6 +164,7 @@ app.use('/api/v1/budgets', budgetsRoutes);
 app.use('/api/v1/data-export', dataExportRoutes);
 app.use('/api/v1/reconciliation', reconciliationRoutes);
 app.use('/api/v1/carry-over', carryOverRoutes);
+app.use('/api/v1/audit-report', auditReportRoutes);
 
 // Swagger UI — API documentation. Mounted after all routes so it doesn't
 // shadow any real /api/docs endpoint, and before the 404 handler so the UI

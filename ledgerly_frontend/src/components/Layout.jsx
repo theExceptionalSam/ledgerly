@@ -174,6 +174,9 @@ export default function Layout({ children }) {
                   {(isOwner || user.role === "accountant") && (
                     <NavLink to="/aged-debtors" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Aged Debtors</NavLink>
                   )}
+                  {(isOwner || user.role === "accountant") && (
+                    <NavLink to="/boarding-report" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Boarding Report</NavLink>
+                  )}
                   <NavLink to="/budgets" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Budgets</NavLink>
                   <NavLink to="/reconciliation" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>End-of-Day Reconciliation</NavLink>
                   {isOwner && (
@@ -245,6 +248,9 @@ export default function Layout({ children }) {
               <div className="app-nav-mobile-group-title">Financial</div>
               {(isOwner || user.role === "accountant") && (
                 <NavLink to="/aged-debtors" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Aged Debtors</NavLink>
+              )}
+              {(isOwner || user.role === "accountant") && (
+                <NavLink to="/boarding-report" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Boarding Report</NavLink>
               )}
               <NavLink to="/budgets" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Budgets</NavLink>
               <NavLink to="/reconciliation" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>End-of-Day Reconciliation</NavLink>

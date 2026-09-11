@@ -1,0 +1,19 @@
+-- Student type field: distinguishes boarding students from day students.
+--
+-- Context: many schools run a mixed boarding/day programme. Boarding students
+-- incur additional fees (boarding, feeding, laundry) that day students don't.
+-- Adding `student_type` to the `students` table lets the UI tag each student,
+-- the bulk fee-assignment endpoint filter by type (so you can charge "Boarding"
+-- to only boarding students in JSS 1), and the aged-debtors report render a
+-- boarding-only view.
+--
+-- The column is NOT NULL with DEFAULT 'day' so the migration is backfill-free:
+-- every existing student row picks up 'day' instantly (the overwhelming
+-- majority of legacy students are day students — boarding is the minority
+-- case). New INSERTs from createStudent / bulkUpload pass an explicit value.
+--
+-- The CHECK constraint keeps the value in {day, boarding} — application code
+-- can rely on this without re-validating. Adding the CHECK after the column
+-- with IF NOT EXISTS makes the migration safe to re-run on a partially
+-- migrated DB (idempotent).
+ALTER TABLE students ADD COLUMN IF NOT EXISTS student_type TEXT NOT NULL DEFAULT 'day' CHECK (student_type IN ('day', 'boarding'));

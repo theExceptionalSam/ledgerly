@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { naira } from "../utils/format";
+import { useAuth } from "../context/AuthContext";
+import { useTerm } from "../context/TermContext";
+import TermSwitcher from "../components/TermSwitcher";
 
 // Maps each audit entry to a human-readable title + structured details.
 function describe(entry) {
@@ -90,6 +93,8 @@ function formatDate(iso) {
 }
 
 export default function AuditLog() {
+  const { user } = useAuth();
+  const { selectedTermId, selectedTerm } = useTerm();
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -102,6 +107,13 @@ export default function AuditLog() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [viewDeleted, setViewDeleted] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+
+  // The audit-report PDF download is owner/accountant only (the Audit Log
+  // page itself is owner-only via the /audit-log route guard in App.jsx, so
+  // in practice only owners reach this view; the role check here future-proofs
+  // the button if the route is ever opened up to accountants).
+  const canDownloadReport = user && (user.role === "owner" || user.role === "accountant");
 
   // Debounce search (500ms) — server-side search avoids loading 50,000 entries
   useEffect(() => {
@@ -160,13 +172,52 @@ export default function AuditLog() {
     } catch (e) { setError(e.message); } finally { setClearing(false); }
   };
 
+  // Download the consolidated audit-report PDF for the currently-selected term.
+  // Backend: GET /audit-report?termId=… (writes its own audit-log row with
+  // entity_type='audit_report' so the download itself is auditable).
+  const downloadAuditReport = async () => {
+    if (!selectedTermId) {
+      setError("Pick a term above to download its audit report.");
+      return;
+    }
+    setDownloadingReport(true); setError("");
+    try {
+      await api.openPdf(`/audit-report?termId=${selectedTermId}`);
+    } catch (e) {
+      setError(e.message || "Could not download the audit report.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   return (
     <div>
+      <TermSwitcher />
       <p className="page-intro">
         Every action taken on financial and student records. Each entry shows what was done, who did it, and the relevant details.
       </p>
       {error && <div className="form-error">{error}</div>}
       {notice && <div className="form-error" style={{ background: "#E7F3EC", color: "#1B7A43", borderColor: "#C5E0CF" }}>{notice}</div>}
+
+      {canDownloadReport && (
+        <div className="toolbar audit-toolbar" style={{ marginBottom: 14 }}>
+          <div className="field-hint" style={{ margin: 0 }}>
+            {selectedTerm
+              ? <>Audit report PDF will cover <strong>{selectedTerm.name}</strong>.</>
+              : "Select a term above to enable the audit-report PDF download."}
+          </div>
+          <div className="audit-toolbar-actions">
+            <button
+              className="btn-primary"
+              onClick={downloadAuditReport}
+              disabled={downloadingReport || !selectedTermId}
+              title={selectedTermId ? "Download a consolidated PDF audit report for the selected term" : "Select a term first"}
+            >
+              {downloadingReport ? "Preparing PDF..." : "Download Audit Report (PDF)"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="toolbar audit-toolbar">
         <input id="audit-log-search" name="auditSearch" className="search-input" placeholder="Search audit log (name, action, amount…)" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />

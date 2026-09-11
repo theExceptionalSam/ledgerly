@@ -26,4 +26,16 @@ router.post('/:id/bulk-assign', requireRole('owner', 'bursar', 'accountant'), [
   body('overwriteExisting').optional().isBoolean(),
 ], validate, asyncHandler(ctrl.bulkAssign));
 
+// Boarding: bulk assign a fee head to every student in a class who matches a
+// given student_type. Used to charge Boarding Fee only to boarding students in
+// a class (day students in the same class are skipped).
+router.post('/:id/bulk-assign-by-type', requireRole('owner', 'bursar', 'accountant'), [
+  param('id').isUUID(),
+  body('termId').isUUID(),
+  body('class').trim().isLength({ min: 1, max: 60 }),
+  body('studentType').isIn(['day', 'boarding']),
+  body('expectedAmount').isFloat({ min: 0 }),
+  body('overwriteExisting').optional().isBoolean(),
+], validate, asyncHandler(ctrl.bulkAssignByType));
+
 module.exports = router;

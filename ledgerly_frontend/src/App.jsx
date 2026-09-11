@@ -41,6 +41,7 @@ const Security = lazy(() => import("./pages/Security"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const AgedDebtors = lazy(() => import("./pages/AgedDebtors"));
+const BoardingReport = lazy(() => import("./pages/BoardingReport"));
 const Budgets = lazy(() => import("./pages/Budgets"));
 const Reconciliation = lazy(() => import("./pages/Reconciliation"));
 const Reversals = lazy(() => import("./pages/Reversals"));
@@ -167,6 +168,11 @@ export default function App() {
               <Route path="/aged-debtors" element={
                 <ProtectedRoute roles={["owner", "accountant"]}>
                   <Layout><AgedDebtors /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/boarding-report" element={
+                <ProtectedRoute roles={["owner", "accountant"]}>
+                  <Layout><BoardingReport /></Layout>
                 </ProtectedRoute>
               } />
               <Route path="/budgets" element={

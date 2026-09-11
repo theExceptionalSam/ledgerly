@@ -1673,3 +1673,45 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
   width: auto;
   border-radius: 6px;
 }
+
+/* ---------- Offline banner (PWA) ----------
+   Toggled by main.jsx when window fires `offline` / `online`. We use a
+   ::before pseudo-element on <body> so it sits at the very top of the page,
+   above the app header, with no extra DOM needed. The banner is sticky-ish
+   (it's the first painted row of the body, so it always shows above the
+   header on initial scroll) and uses the brand amber so it doesn't look
+   like an error (the user can still use cached data) but still stands out. */
+body.app-offline::before {
+  content: "You're offline. Some features may be unavailable.";
+  display: block;
+  background: #C77D22;
+  color: #fff;
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+/* ---------- Student type badges + filter chips ---------- */
+.student-type-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+}
+.student-type-badge.boarding { color: #14213D; background: #E4E3DD; }
+.student-type-badge.day { color: #6B6E72; background: #EDECE6; }
+
+/* Chip group next to the class filter on the Students toolbar. Reuses the
+   existing .filter-chip styles for sizing / active state — this wrapper just
+   groups them as a single a11y role=group. */
+.student-type-chips {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.student-type-chip { padding: 6px 12px; font-size: 12.5px; }

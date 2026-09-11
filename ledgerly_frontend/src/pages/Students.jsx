@@ -19,6 +19,7 @@ export default function Students() {
   const [students, setStudents] = useState([]);
   const [filter, setFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
+  const [studentType, setStudentType] = useState("all"); // "all" | "day" | "boarding"
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -61,13 +62,14 @@ export default function Students() {
       api.get(`/students?status=archived`).then((d) => { setStudents(d.students); setTotal(d.total || d.students.length); setTotalPages(1); }).catch((e) => setError(e.message));
     } else if (selectedTermId) {
       const searchParam = debouncedQuery ? `&search=${encodeURIComponent(debouncedQuery)}` : "";
-      api.get(`/students?termId=${selectedTermId}&page=${page}&pageSize=100${searchParam}`).then((d) => {
+      const typeParam = studentType !== "all" ? `&studentType=${studentType}` : "";
+      api.get(`/students?termId=${selectedTermId}&page=${page}&pageSize=100${searchParam}${typeParam}`).then((d) => {
         setStudents(d.students); setTotal(d.total || 0); setTotalPages(d.totalPages || 1);
       }).catch((e) => setError(e.message));
     }
   };
 
-  useEffect(() => { load(); }, [selectedTermId, viewArchived, page, debouncedQuery]);
+  useEffect(() => { load(); }, [selectedTermId, viewArchived, page, debouncedQuery, studentType]);
 
   useEffect(() => {
     api.get("/fee-heads").then((d) => setFeeHeads(d.feeHeads)).catch(() => {});
@@ -328,6 +330,21 @@ export default function Students() {
                   {classes.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
+              {!viewArchived && (
+                <div className="student-type-chips" role="group" aria-label="Filter by student type">
+                  {["all", "day", "boarding"].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={"filter-chip student-type-chip" + (studentType === t ? " active" : "")}
+                      onClick={() => setStudentType(t)}
+                      aria-pressed={studentType === t}
+                    >
+                      {t === "all" ? "All" : t === "day" ? "Day" : "Boarding"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="toolbar-actions">
               {canDelete && (
@@ -409,7 +426,14 @@ export default function Students() {
               <div className="list-item">
                 <div className="list-item-row">
                   <div className="list-item-main">
-                    <div className="list-item-title">{detail.student.name}</div>
+                    <div className="list-item-title">
+                      {detail.student.name}
+                      {detail.student.student_type === "boarding" ? (
+                        <span className="badge student-type-badge boarding" title="Boarding student">Boarding</span>
+                      ) : (
+                        <span className="badge student-type-badge day" title="Day student">Day</span>
+                      )}
+                    </div>
                     <div className="list-item-sub">
                       {detail.student.class}{detail.student.admission_no ? " · " + detail.student.admission_no : ""}
                       {detail.student.guardian_contact ? " · Parent: " + detail.student.guardian_contact : ""}
@@ -442,7 +466,14 @@ export default function Students() {
                       />
                     )}
                     <div className="list-item-main">
-                      <div className="list-item-title">{s.name}</div>
+                      <div className="list-item-title">
+                        {s.name}
+                        {s.student_type === "boarding" ? (
+                          <span className="badge student-type-badge boarding" title="Boarding student">Boarding</span>
+                        ) : (
+                          <span className="badge student-type-badge day" title="Day student">Day</span>
+                        )}
+                      </div>
                       <div className="list-item-sub">
                         {s.class}{s.admission_no ? " · " + s.admission_no : ""}
                         {s.guardian_contact ? " · Parent: " + s.guardian_contact : ""}
@@ -638,13 +669,14 @@ function AddStudentModal({ onClose, onSave }) {
   const [klass, setKlass] = useState(CLASS_LIST[0]);
   const [admissionNo, setAdmissionNo] = useState("");
   const [guardianContact, setGuardianContact] = useState("");
+  const [studentType, setStudentType] = useState("day");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true); setError("");
     try {
-      await onSave({ name, class: klass, admissionNo, guardianContact });
+      await onSave({ name, class: klass, admissionNo, guardianContact, studentType });
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -657,6 +689,11 @@ function AddStudentModal({ onClose, onSave }) {
       <label htmlFor="add-student-class">Class</label>
       <select id="add-student-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
         {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <label htmlFor="add-student-type">Student type</label>
+      <select id="add-student-type" name="studentType" value={studentType} onChange={(e) => setStudentType(e.target.value)}>
+        <option value="day">Day</option>
+        <option value="boarding">Boarding</option>
       </select>
       <label htmlFor="add-student-admission-no">Admission number (optional)</label>
       <input id="add-student-admission-no" name="admissionNo" value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} autoComplete="off" />
@@ -674,13 +711,14 @@ function EditStudentModal({ student, onClose, onSave }) {
   const [klass, setKlass] = useState(student?.class || CLASS_LIST[0]);
   const [admissionNo, setAdmissionNo] = useState(student?.admission_no || "");
   const [guardianContact, setGuardianContact] = useState(student?.guardian_contact || "");
+  const [studentType, setStudentType] = useState(student?.student_type === "boarding" ? "boarding" : "day");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true); setError("");
     try {
-      await onSave({ name, class: klass, admissionNo, guardianContact });
+      await onSave({ name, class: klass, admissionNo, guardianContact, studentType });
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -692,6 +730,11 @@ function EditStudentModal({ student, onClose, onSave }) {
       <label htmlFor="edit-student-class">Class</label>
       <select id="edit-student-class" name="class" value={klass} onChange={(e) => setKlass(e.target.value)}>
         {CLASS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <label htmlFor="edit-student-type">Student type</label>
+      <select id="edit-student-type" name="studentType" value={studentType} onChange={(e) => setStudentType(e.target.value)}>
+        <option value="day">Day</option>
+        <option value="boarding">Boarding</option>
       </select>
       <label htmlFor="edit-student-admission-no">Admission number (optional)</label>
       <input id="edit-student-admission-no" name="admissionNo" value={admissionNo} onChange={(e) => setAdmissionNo(e.target.value)} autoComplete="off" />
@@ -743,7 +786,7 @@ function UploadModal({ onClose, onDone }) {
       ) : (
         <div>
           <p className="field-hint" style={{ marginTop: 0 }}>
-            First row must have: <strong>Name, Class, Admission No, Parent Contact</strong>. Fee heads are assigned after import.
+            First row must have: <strong>Name, Class, Admission No, Parent Contact</strong>. An optional <strong>Type</strong> column accepts <em>day</em> or <em>boarding</em> (defaults to <em>day</em> if omitted). Fee heads are assigned after import.
           </p>
           <a className="field-hint" href="#" onClick={(e) => { e.preventDefault(); api.download("/students/bulk/template", "ledgerly-students-template.xlsx"); }}>
             Download the template file

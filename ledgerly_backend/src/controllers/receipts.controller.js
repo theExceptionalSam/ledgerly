@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const db = require('../db');
 const { recordAudit } = require('../utils/audit');
-const { generateReceiptPdf } = require('../utils/receipt-pdf');
+const { generateReceiptPdf, formatCurrency } = require('../utils/receipt-pdf');
 const logger = require('../utils/logger');
 
 // Phase 3: Receipts.
@@ -83,13 +83,16 @@ async function issueReceipt(req, res) {
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.reversed) return res.status(400).json({ error: 'Cannot issue a receipt for a reversed payment' });
 
-  // Load the tenant's name + branding columns. logo_data_url (base64 data
-  // URL) and receipt_footer are nullable; if absent, generateReceiptPdf falls
-  // back to the default header (school name only) and the default two-line
-  // footer. logo_data_url is the canonical storage (Render's filesystem is
-  // ephemeral so we keep logos in the DB).
+  // Load the tenant's name + branding columns + currency. logo_data_url (base64
+  // data URL) and receipt_footer are nullable; if absent, generateReceiptPdf
+  // falls back to the default header (school name only) and the default
+  // two-line footer. logo_data_url is the canonical storage (Render's
+  // filesystem is ephemeral so we keep logos in the DB). `currency` defaults
+  // to 'NGN' on the column itself (migration 017) so it's never NULL, but we
+  // coalesce defensively so a manually-nullified row can't crash the PDF
+  // generator.
   const { rows: tenantRows } = await db.query(
-    `SELECT name, logo_path, logo_data_url, receipt_footer FROM tenants WHERE id = $1`,
+    `SELECT name, logo_path, logo_data_url, receipt_footer, COALESCE(currency, 'NGN') AS currency FROM tenants WHERE id = $1`,
     [tenantId]
   );
   const tenant = tenantRows[0];
@@ -167,6 +170,7 @@ async function issueReceipt(req, res) {
       termName: payment.term_name || 'N/A',
       recordedByName: payment.recorded_by_name || 'Staff',
       branding: { logoDataUrl: tenant.logo_data_url, footerText: tenant.receipt_footer },
+      currency: tenant.currency,
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
@@ -276,7 +280,7 @@ async function emailReceipt(req, res) {
   if (payment.reversed) return res.status(400).json({ error: 'Cannot email a receipt for a reversed payment' });
 
   const { rows: tenantRows } = await db.query(
-    `SELECT name, logo_path, logo_data_url, receipt_footer FROM tenants WHERE id = $1`,
+    `SELECT name, logo_path, logo_data_url, receipt_footer, COALESCE(currency, 'NGN') AS currency FROM tenants WHERE id = $1`,
     [tenantId]
   );
   const tenant = tenantRows[0];
@@ -320,6 +324,7 @@ async function emailReceipt(req, res) {
       termName: payment.term_name || 'N/A',
       recordedByName: payment.recorded_by_name || 'Staff',
       branding: { logoDataUrl: tenant.logo_data_url, footerText: tenant.receipt_footer },
+      currency: tenant.currency,
     });
   } catch (err) {
     // SECURITY: don't leak the internal error (PDF generator / font error) to
@@ -333,7 +338,10 @@ async function emailReceipt(req, res) {
   // free plan) — production deploys should set RESEND_FROM_EMAIL to a
   // verified-domain address.
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'Ledgerly <onboarding@resend.dev>';
-  const amountFmt = `₦${Number(payment.amount || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+  // Multi-currency: format the email-body amount with the tenant's configured
+  // currency. `hasUnicodeFonts` is true here (HTML email uses Unicode by
+  // default, not pdfkit's WinAnsi encoding), so even ₦/₵ render fine.
+  const amountFmt = formatCurrency(Number(payment.amount || 0), tenant.currency, true);
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#14213D">
       <h2 style="margin-bottom:4px">${escapeHtml(tenant.name)}</h2>

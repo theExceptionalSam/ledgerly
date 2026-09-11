@@ -4,6 +4,27 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 
+// Offline / online detection — toggles a `app-offline` class on <body> so the
+// CSS banner (see styles.css `.app-offline::before`) shows when the user loses
+// connectivity. We don't redirect to a fallback page (the existing VitePWA
+// workbox config keeps `navigateFallback: null` on purpose to avoid Samsung
+// blank-page issues), so the user stays on whatever route they were on and
+// just sees the banner until connectivity returns. API calls in flight will
+// surface their own error messages; this banner is the global indicator.
+if (typeof window !== 'undefined' && 'onoffline' in window) {
+  window.addEventListener('offline', () => {
+    document.body.classList.add('app-offline');
+  });
+  window.addEventListener('online', () => {
+    document.body.classList.remove('app-offline');
+  });
+  // Set the initial state — if the tab is loaded while already offline
+  // (e.g. PWA launched from cache with no network), show the banner now.
+  if (!navigator.onLine) {
+    document.body.classList.add('app-offline');
+  }
+}
+
 // Aggressively clean up old/stale service workers before registering the new
 // one. This is critical for Samsung browsers which hold onto stale SWs and
 // can cause "failed to fetch" errors on API requests when the old SW's routing

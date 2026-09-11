@@ -79,10 +79,59 @@ function registerUnicodeFonts(doc) {
 // Format amount for display. Uses ₦ if Unicode fonts are available,
 // otherwise falls back to "NGN" text (avoids the broken-bar character
 // that pdfkit's WinAnsi encoding produces for ₦).
+//
+// Retained for backwards compatibility (exported + used by tests + email
+// template). New callers should use `formatCurrency` instead.
 function formatNaira(amount, hasUnicodeFonts) {
+  return formatCurrency(amount, 'NGN', hasUnicodeFonts);
+}
+
+// Multi-currency formatter. Maps an ISO currency code (NGN, GHS, KES, ZAR,
+// USD) to the appropriate display symbol and the words-form suffix used by
+// the receipt's "amount in words" row.
+//
+// The Unicode symbols for Naira (₦, U+20A6) and Cedi (₵, U+20B5) are NOT in
+// pdfkit's WinAnsi encoding, so when `hasUnicodeFonts` is false we fall back
+// to the ISO text (NGN / GHS) to avoid the broken-bar glyph pdfkit would
+// otherwise substitute. The other symbols ($, R, KSh) are plain ASCII so
+// they render fine on the built-in fonts too — we still honour the fallback
+// for consistency.
+const CURRENCY_INFO = {
+  NGN: { symbol: '₦', text: 'NGN', wordsSuffix: 'Naira Only', locale: 'en-NG' },
+  GHS: { symbol: '₵', text: 'GHS', wordsSuffix: 'Cedis Only', locale: 'en-GH' },
+  KES: { symbol: 'KSh', text: 'KES', wordsSuffix: 'Shillings Only', locale: 'en-KE' },
+  ZAR: { symbol: 'R', text: 'ZAR', wordsSuffix: 'Rand Only', locale: 'en-ZA' },
+  USD: { symbol: '$', text: 'USD', wordsSuffix: 'Dollars Only', locale: 'en-US' },
+};
+
+function formatCurrency(amount, currency, hasUnicodeFonts) {
   const v = Number(amount) || 0;
-  const formatted = v.toLocaleString("en-NG", { maximumFractionDigits: 0 });
-  return hasUnicodeFonts ? `₦${formatted}` : `NGN ${formatted}`;
+  const info = CURRENCY_INFO[(currency || 'NGN').toUpperCase()] || CURRENCY_INFO.NGN;
+  // locale-aware grouping (thousands separators). Falls back to en-US if the
+  // Intl runtime doesn't ship the requested locale (Node ships full ICU so
+  // this is rarely an issue, but a defensive try/catch would silently fall
+  // back to the default locale — fine here, the symbol is what matters).
+  let formatted;
+  try {
+    formatted = v.toLocaleString(info.locale, { maximumFractionDigits: 0 });
+  } catch {
+    formatted = v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+  // KSh / R / $ are ASCII — always render with the symbol. ₦ / ₵ need the
+  // Unicode font; without it, fall back to the ISO text form.
+  const needsUnicode = info.symbol === '₦' || info.symbol === '₵';
+  const useSymbol = !needsUnicode || hasUnicodeFonts;
+  return useSymbol ? `${info.symbol}${formatted}` : `${info.text} ${formatted}`;
+}
+
+// Suffix for the "amount in words" row — "Naira Only", "Cedis Only", etc.
+// Used so the words row matches the figures row's currency after multi-
+// currency support landed. Defaults to "Naira Only" for unknown codes (same
+// default as the symbol map above — keeps the receipt renderable even with a
+// garbage currency value).
+function currencyWordsSuffix(currency) {
+  const info = CURRENCY_INFO[(currency || 'NGN').toUpperCase()] || CURRENCY_INFO.NGN;
+  return info.wordsSuffix;
 }
 
 // ---- Formatting helpers -----------------------------------------------------
@@ -215,6 +264,7 @@ function generateReceiptPdf({
   termName,
   recordedByName,
   branding,
+  currency,
 }) {
   return new Promise((resolve, reject) => {
     try {
@@ -375,10 +425,15 @@ function generateReceiptPdf({
       y += 24;
 
       // ---- Details table (2 columns: label left, value right) ------------
+      // Multi-currency: format the amount rows with the tenant's configured
+      // currency (default NGN). The figures row carries the currency symbol;
+      // the words row uses the matching suffix ("Naira Only" / "Cedis Only" /
+      // "Shillings Only" / "Rand Only" / "Dollars Only").
+      const resolvedCurrency = (currency || 'NGN').toUpperCase();
       const rows = [
         ['Fee Head', feeHeadName || ''],
-        ['Amount Paid (figures)', formatNaira(amount, hasUnicodeFonts)],
-        ['Amount Paid (in words)', numberToWords(amount) + ' Naira Only'],
+        ['Amount Paid (figures)', formatCurrency(amount, resolvedCurrency, hasUnicodeFonts)],
+        ['Amount Paid (in words)', `${numberToWords(amount)} ${currencyWordsSuffix(resolvedCurrency)}`],
         ['Payment Method', capitalizeMethod(method)],
         ['Date Paid', formatDate(paidOn)],
         ['Recorded By', recordedByName || ''],
@@ -433,11 +488,14 @@ function generateReceiptPdf({
         .text('TOTAL PAID', MARGIN + 14, y + 14, { align: 'left' });
 
       // Total amount — Times-Bold 16pt green. Use the Unicode serif stand-in
-      // so the ₦ sign renders.
+      // so the currency symbol (₦ / ₵ / $ / R / KSh) renders correctly. The
+      // ASCII symbols ($, R, KSh) render fine on Times-Bold too, but the
+      // Unicode serif stand-in keeps the font choice consistent across the
+      // whole receipt.
       doc.fillColor(COLORS.green)
         .font(unicodeFonts.serifBold)
         .fontSize(16)
-        .text(formatNaira(amount, hasUnicodeFonts), MARGIN + 14, y + 11, {
+        .text(formatCurrency(amount, resolvedCurrency, hasUnicodeFonts), MARGIN + 14, y + 11, {
           align: 'right',
           width: CONTENT_WIDTH - 28,
         });
@@ -541,6 +599,8 @@ module.exports = {
   // Exported for unit testing / reuse by other modules.
   numberToWords,
   formatNaira,
+  formatCurrency,
+  currencyWordsSuffix,
   formatDate,
   capitalizeMethod,
 };
