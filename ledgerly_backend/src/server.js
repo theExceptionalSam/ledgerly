@@ -60,6 +60,7 @@ const agedDebtorsRoutes = require('./routes/aged-debtors.routes');
 const budgetsRoutes = require('./routes/budgets.routes');
 const dataExportRoutes = require('./routes/data-export.routes');
 const reconciliationRoutes = require('./routes/reconciliation.routes');
+const monitoringRoutes = require('./routes/monitoring.routes');
 
 const app = express();
 
@@ -102,6 +103,14 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ status: 'degraded', db: false });
   }
 });
+
+// Uptime monitoring endpoint — for external monitors (UptimeRobot, Better
+// Stack). Mounted before requirePasswordNotForced so it needs no auth (monitors
+// can't authenticate). Returns only non-sensitive health data. Distinct from
+// /health because it surfaces memory + response time for external dashboards
+// and uses a different URL so the platform operator can route it to a separate
+// monitor without affecting the load-balancer health check.
+app.use('/api/monitoring', monitoringRoutes);
 
 // --- Public routes (before requirePasswordNotForced) ---
 app.use('/api/v1/auth', authRoutes);
@@ -197,36 +206,43 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 4000;
 let server;
 
-// Start the server immediately — don't wait for db.ready. The health endpoint
-// will report 'degraded' until the DB connects, and individual endpoints will
-// return 500 if the DB is unreachable. This prevents Render from crash-looping
-// on cold starts where the DB connection takes longer than expected.
-// The db.ready promise (with retries) resolves in the background; once it does,
-// all endpoints work normally.
-server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
+// In test mode (NODE_ENV=test), skip binding a real port — supertest spins up
+// its own ephemeral server per request, and binding port 4000 here would leave
+// a dangling listener that prevents Jest from exiting. Also skip db.init so the
+// test process doesn't try to connect to a (nonexistent) DB and spam the logs.
+// Tests mock the db module via tests/jest.setup.js instead.
+if (process.env.NODE_ENV !== 'test') {
+  // Start the server immediately — don't wait for db.ready. The health endpoint
+  // will report 'degraded' until the DB connects, and individual endpoints will
+  // return 500 if the DB is unreachable. This prevents Render from crash-looping
+  // on cold starts where the DB connection takes longer than expected.
+  // The db.ready promise (with retries) resolves in the background; once it does,
+  // all endpoints work normally.
+  server = app.listen(PORT, () => logger.info({ port: PORT, msg: 'API listening' }));
 
-db.ready.then(() => {
-  logger.info({ msg: 'Database initialized — all endpoints ready' });
-}).catch((err) => {
-  logger.error({ err: err.message, msg: 'Database initialization failed after retries' });
-  // Don't process.exit — keep the server running so Render doesn't crash-loop.
-  // The health endpoint will return 503 (degraded), and individual endpoints
-  // will return 500 (DATABASE_URL not configured / connection error).
-  // Render's health check will mark the service as degraded but won't restart it.
-});
+  db.ready.then(() => {
+    logger.info({ msg: 'Database initialized — all endpoints ready' });
+  }).catch((err) => {
+    logger.error({ err: err.message, msg: 'Database initialization failed after retries' });
+    // Don't process.exit — keep the server running so Render doesn't crash-loop.
+    // The health endpoint will return 503 (degraded), and individual endpoints
+    // will return 500 (DATABASE_URL not configured / connection error).
+    // Render's health check will mark the service as degraded but won't restart it.
+  });
 
-function shutdown(signal) {
-  logger.info({ signal, msg: 'Shutting down' });
-  if (server) {
-    server.close(() => {
-      db.pool.end().then(() => process.exit(0)).catch(() => process.exit(0));
-    });
-    setTimeout(() => process.exit(0), 10000).unref();
-  } else {
-    process.exit(0);
+  function shutdown(signal) {
+    logger.info({ signal, msg: 'Shutting down' });
+    if (server) {
+      server.close(() => {
+        db.pool.end().then(() => process.exit(0)).catch(() => process.exit(0));
+      });
+      setTimeout(() => process.exit(0), 10000).unref();
+    } else {
+      process.exit(0);
+    }
   }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
 module.exports = app;

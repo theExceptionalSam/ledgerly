@@ -7,7 +7,7 @@ if (!globalThis.crypto) {
   globalThis.crypto = webcrypto;
 }
 
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -62,5 +62,14 @@ export default defineConfig({
     // Chrome. The default ('modules') can break on browsers that support ES
     // modules but not newer syntax like optional chaining.
     target: 'es2019',
+  },
+  test: {
+    // jsdom environment for component tests (DOM APIs, window, etc.)
+    environment: 'jsdom',
+    // Make `describe`, `it`, `expect`, etc. available globally (matches the
+    // jest-dom setup file's expectation that `expect.extend` is on the global)
+    globals: true,
+    // Global setup — adds @testing-library/jest-dom matchers
+    setupFiles: './src/test/setup.js',
   },
 });
