@@ -2,12 +2,18 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',');
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim()).filter(Boolean);
 
 const corsMiddleware = cors({
   origin: (origin, callback) => {
-    // allow same-origin/non-browser requests (no origin header) and configured origins only
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    // allow same-origin/non-browser requests (no origin header)
+    if (!origin) return callback(null, true);
+    // allow explicitly configured origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // allow any *.vercel.app origin (Vercel preview/production deployments)
+    // Handles Vercel URL renames and preview deployments without needing to
+    // update CORS_ORIGINS on Render each time.
+    if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return callback(null, true);
     return callback(new Error('Origin not permitted by CORS policy'));
   },
   credentials: true,
