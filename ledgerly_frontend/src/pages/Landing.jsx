@@ -41,7 +41,7 @@ export default function Landing() {
           <h1>Collect school fees faster.</h1>
           <h1 className="landing-hero-green">Track every naira.</h1>
           <p className="landing-hero-sub">
-            Ledgerly helps schools collect fees, issue receipts, and see who has paid — all in one place.
+            Ledgerly helps schools collect fees, issue receipts, and see who has paid all in one place.
             No more exercise books. No more lost receipts. No more guessing who owes you money.
           </p>
           <div className="landing-hero-cta">
@@ -129,7 +129,7 @@ export default function Landing() {
             <FeatureCard
               icon="📊"
               title="See everything at a glance"
-              desc="Your dashboard shows how much you've collected, how much is outstanding, and who has paid — all in real-time."
+              desc="Your dashboard shows how much you've collected, how much is outstanding, and who has paid all in real-time."
               color="#1B7A43"
             />
             <FeatureCard
