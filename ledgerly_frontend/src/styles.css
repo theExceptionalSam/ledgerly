@@ -1715,3 +1715,46 @@ body.app-offline::before {
   flex-wrap: wrap;
 }
 .student-type-chip { padding: 6px 12px; font-size: 12.5px; }
+
+/* ---------- Landing: trust badges + CTA contact ---------- */
+.landing-trust-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 20px 0 12px;
+  flex-wrap: wrap;
+}
+.landing-trust-badge {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+}
+.landing-cta-or {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+  margin: 12px 0 4px;
+}
+.landing-cta-contact-text {
+  font-size: 15px;
+  color: rgba(255,255,255,0.8);
+  margin: 0;
+}
+.landing-cta-phone {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.landing-cta-phone:hover {
+  text-decoration: none;
+  opacity: 0.8;
+}
+
+@media (max-width: 480px) {
+  .landing-trust-row { gap: 8px; }
+  .landing-trust-badge { font-size: 11px; padding: 4px 10px; }
+}

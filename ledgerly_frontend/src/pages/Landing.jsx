@@ -41,12 +41,11 @@ export default function Landing() {
           <h1>Collect school fees faster.</h1>
           <h1 className="landing-hero-green">Track every naira.</h1>
           <p className="landing-hero-sub">
-            Ledgerly helps schools collect fees, issue receipts, and see who has paid all in one place.
-            No more exercise books. No more lost receipts. No more guessing who owes you money.
+            The simple way to manage school fees, issue receipts, and see who owes what — all in one place. Built for Nigerian schools.
           </p>
           <div className="landing-hero-cta">
             <Link to={user ? "/dashboard" : "/register"} className="btn-primary landing-cta-btn">
-              {user ? "Go to dashboard →" : "Register your school — FREE first term →"}
+              {user ? "Go to dashboard →" : "Start FREE this term →"}
             </Link>
             {!user && (
               <Link to="/login" className="btn-ghost landing-cta-btn-alt">
@@ -54,7 +53,12 @@ export default function Landing() {
               </Link>
             )}
           </div>
-          <p className="landing-hero-note">No credit card needed · Works on any phone, tablet, or computer</p>
+          <div className="landing-trust-row">
+            <span className="landing-trust-badge">🔒 Bank-grade security</span>
+            <span className="landing-trust-badge">🇳🇬 Built for Nigeria</span>
+            <span className="landing-trust-badge">📱 Works on any device</span>
+          </div>
+          <p className="landing-hero-note">No credit card needed · No commitment · Cancel anytime</p>
         </div>
       </section>
 
@@ -94,7 +98,9 @@ export default function Landing() {
       <section className="landing-section landing-section-tint">
         <div className="landing-section-inner">
           <h2>The Problem</h2>
-          <p className="landing-section-intro">Most schools in Nigeria still track fees this way:</p>
+          <p className="landing-section-intro">
+            Schools lose an average of <strong style={{ color: "#B3261E" }}>₦500,000 per term</strong> in uncollected fees. Here's why:
+          </p>
           <div className="landing-problem-grid">
             <div className="landing-problem-item">
               <span className="landing-problem-emoji">📓</span>
@@ -251,9 +257,12 @@ export default function Landing() {
           <p>Start your first term <strong>FREE</strong>. No risk, no commitment.</p>
           <p className="landing-cta-note">If Ledgerly doesn't save you time and help you collect more fees, you walk away at no cost.</p>
           <Link to={user ? "/dashboard" : "/register"} className="btn-primary landing-cta-btn">
-            {user ? "Go to dashboard →" : "Register your school →"}
+            {user ? "Go to dashboard →" : "Start FREE this term →"}
           </Link>
-          <p className="landing-cta-url">ledgerly-xi-ochre.vercel.app</p>
+          <p className="landing-cta-or">or</p>
+          <p className="landing-cta-contact-text">
+            Prefer to talk? <a href="tel:+2348073231954" className="landing-cta-phone">Call 0807 323 1954</a> and we'll set up your school for you.
+          </p>
         </div>
       </section>
 
@@ -272,7 +281,7 @@ export default function Landing() {
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
           </div>
-          <p className="landing-footer-copy">© 2026 Ledgerly · Built for Nigerian schools</p>
+          <p className="landing-footer-copy">© 2026 Ledgerly · Built for Nigerian schools · ledgerly-xi-ochre.vercel.app</p>
         </div>
       </footer>
     </div>
