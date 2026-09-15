@@ -1260,7 +1260,7 @@ export default function PlatformAdmin() {
       <div className="auth-page" role="main">
         <form className="auth-card" onSubmit={submit}>
           <div className="auth-logo-block">
-            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
+            <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
           </div>
           <h1>Platform admin</h1>
           <p className="auth-sub">Operator dashboard for the Ledgerly platform. Separate credentials from school accounts.</p>
@@ -1305,7 +1305,7 @@ export default function PlatformAdmin() {
       <header className="app-header">
         <div className="app-header-inner">
           <div className="app-brand-block">
-            <img src="/app-icon.jpg" alt="Ledgerly" className="app-logo" />
+            <img src="/app-icon.png" alt="Ledgerly" className="app-logo" />
             <div className="app-brand-text">
               <div className="app-brand">Ledgerly · Platform</div>
               <div className="app-subbrand">{email || "operator"}</div>

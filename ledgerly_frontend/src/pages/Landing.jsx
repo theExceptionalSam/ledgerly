@@ -36,7 +36,7 @@ export default function Landing() {
       <section className="landing-hero">
         <div className="landing-hero-inner">
           <div className="landing-logo-row">
-            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="landing-logo-img" width="200" height="58" />
+            <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="landing-logo-img" width="200" height="58" />
           </div>
           <h1>Collect school fees faster.</h1>
           <h1 className="landing-hero-green">Track every naira.</h1>
@@ -270,7 +270,7 @@ export default function Landing() {
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <div className="landing-footer-brand">
-            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="landing-footer-logo-img" width="140" height="40" />
+            <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="landing-footer-logo-img" width="140" height="40" />
           </div>
           <p>School Fee Management Made Simple</p>
           <div className="landing-footer-links">

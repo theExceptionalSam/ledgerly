@@ -56,7 +56,7 @@ export default function Login() {
     <div className="auth-page" role="main">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
+          <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         </div>
         <h1>Sign in</h1>
         <p className="auth-sub">Access your school's fee and finance records.</p>

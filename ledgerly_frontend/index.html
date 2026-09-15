@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/jpeg" href="/app-icon.jpg" />
-    <link rel="apple-touch-icon" href="/app-icon.jpg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/app-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Ledgerly — school fee and finance tracker. Collect school fees faster, track payments, issue receipts, and see who owes what — all in one place." />
@@ -13,7 +13,9 @@
     <meta property="og:description" content="Collect school fees faster. Track every naira. Issue instant receipts. Built for Nigerian schools." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://ledgerly-xsame.vercel.app" />
+    <meta property="og:image" content="/og-image-new.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og-image-new.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://ledgerly-677r.onrender.com" />
@@ -22,7 +24,12 @@
     <title>Ledgerly — School Fee Management Made Simple</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-splash" id="app-splash">
+        <img src="/app-icon.png" alt="Ledgerly" class="app-splash-logo" />
+        <div class="app-splash-spinner"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

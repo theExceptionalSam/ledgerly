@@ -62,3 +62,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Remove the initial splash screen once React has mounted
+// (gives a smooth fade-out transition)
+setTimeout(() => {
+  const splash = document.getElementById('app-splash');
+  if (splash) {
+    splash.classList.add('hidden');
+    setTimeout(() => splash.remove(), 300);
+  }
+}, 100);

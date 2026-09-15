@@ -1758,3 +1758,69 @@ body.app-offline::before {
   .landing-trust-row { gap: 8px; }
   .landing-trust-badge { font-size: 11px; padding: 4px 10px; }
 }
+
+/* ---------- Branded loading animation ---------- */
+/* A navy/green spinner that matches the Ledgerly brand */
+.ledgerly-loader {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 3px solid #E4E3DD;
+  border-top-color: #14213D;
+  border-right-color: #1B7A43;
+  border-radius: 50%;
+  animation: ledgerly-spin 0.8s linear infinite;
+}
+@keyframes ledgerly-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Page loading — branded spinner */
+.page-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.page-loading::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  border: 3px solid #E4E3DD;
+  border-top-color: #14213D;
+  border-right-color: #1B7A43;
+  border-radius: 50%;
+  animation: ledgerly-spin 0.8s linear infinite;
+}
+
+/* Initial app loading splash (before React mounts) */
+.app-splash {
+  position: fixed;
+  inset: 0;
+  background: #F6F6F3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.3s ease;
+}
+.app-splash.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.app-splash-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+}
+.app-splash-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #E4E3DD;
+  border-top-color: #14213D;
+  border-right-color: #1B7A43;
+  border-radius: 50%;
+  animation: ledgerly-spin 0.8s linear infinite;
+}
