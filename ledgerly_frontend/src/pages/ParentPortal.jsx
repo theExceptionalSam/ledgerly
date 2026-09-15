@@ -160,7 +160,7 @@ function ParentLogin({ onSignedIn }) {
       <div className="auth-page" role="main">
         <form className="auth-card" onSubmit={submitRegister}>
           <div className="auth-logo-block">
-            <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
+            <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
           </div>
           <h1>Register as parent</h1>
           <p className="auth-sub">Create your parent portal account to view your child's fees and pay online.</p>
@@ -236,7 +236,7 @@ function ParentLogin({ onSignedIn }) {
     <div className="auth-page" role="main">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-logo-block">
-          <img src="/ledgerly-logo-dark.png" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
+          <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         </div>
         <h1>Parent portal</h1>
         <p className="auth-sub">Sign in to view your child's fees and pay online.</p>
@@ -380,7 +380,7 @@ function ParentDashboard({ token, parent, onSignOut }) {
       <header className="app-header">
         <div className="app-header-inner">
           <div className="app-brand-block">
-            <img src="/app-icon.png" alt="Ledgerly" className="app-logo" />
+            <img src="/app-icon.jpg" alt="Ledgerly" className="app-logo" />
             <div className="app-brand-text">
               <div className="app-brand">Ledgerly</div>
               <div className="app-school-name">Parent portal</div>
