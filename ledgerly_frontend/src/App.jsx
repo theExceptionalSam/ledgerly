@@ -24,6 +24,7 @@ const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Landing = lazy(() => import("./pages/Landing"));
+const SchoolKyc = lazy(() => import("./pages/SchoolKyc"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Students = lazy(() => import("./pages/Students"));
 const Finance = lazy(() => import("./pages/Finance"));
@@ -75,6 +76,11 @@ export default function App() {
               <Route path="/parent" element={<ParentPortal />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/terms" element={<Terms />} />
+              <Route path="/school-kyc" element={
+                <ProtectedRoute>
+                  <SchoolKyc />
+                </ProtectedRoute>
+              } />
               <Route path="/dashboard" element={
                 <ProtectedRoute>
                   <Layout><Dashboard /></Layout>

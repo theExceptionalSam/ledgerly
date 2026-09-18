@@ -120,6 +120,12 @@ export function AuthProvider({ children }) {
     return api.post("/auth/register-school", payload);
   };
 
+  const completeKyc = async (fields) => {
+    await api.post("/school-kyc", fields);
+    // Update the user object so ProtectedRoute lets them through
+    setUser((u) => ({ ...u, kycCompleted: true }));
+  };
+
   const verifyOtp = async (email, code) => {
     const data = await api.post("/auth/verify-otp", { email, code });
     setAccessToken(data.accessToken);
@@ -147,7 +153,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, schoolName, initializing, login, registerSchool, verifyOtp, resendOtp, forgotPassword, resetPassword, logout }}>
+    <AuthContext.Provider value={{ user, setUser, schoolName, initializing, login, registerSchool, completeKyc, verifyOtp, resendOtp, forgotPassword, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );

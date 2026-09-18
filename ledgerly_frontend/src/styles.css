@@ -1824,3 +1824,22 @@ body.app-offline::before {
   border-radius: 50%;
   animation: ledgerly-spin 0.8s linear infinite;
 }
+
+/* ---------- KYC form styles ---------- */
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+.form-input:focus { outline: 2px solid var(--navy); outline-offset: 1px; border-color: var(--navy); }
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  color: var(--navy);
+}

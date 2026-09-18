@@ -127,8 +127,13 @@ async function verifyOtp(req, res) {
   await recordAudit({ tenantId: user.tenant_id, actorUserId: user.id, action: 'update', entityType: 'user', entityId: user.id, ipAddress: req.ip, metadata: { emailVerified: true } });
 
   const accessToken = await issueSession(res, req, user);
-  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
-  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
+  // Include kyc_completed on the tenant so the frontend can immediately
+  // redirect to /school-kyc after verify (instead of needing a /auth/me round
+  // trip). Booleans are coerced with !! — kyc_completed is NOT NULL DEFAULT
+  // FALSE so the column is always present.
+  const { rows: tenantRows } = await db.query(`SELECT name, kyc_completed FROM tenants WHERE id = $1`, [user.tenant_id]);
+  const tenant = tenantRows[0];
+  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true, kycCompleted: !!tenant?.kyc_completed }, schoolName: tenant?.name || '' });
 }
 
 async function resendOtp(req, res) {
@@ -188,9 +193,12 @@ async function login(req, res) {
   }
 
   const accessToken = await issueSession(res, req, user);
-  // Include tenant name so the frontend doesn't need an extra /auth/me call.
-  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
-  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true }, schoolName: tenantRows[0]?.name || '' });
+  // Include tenant name + kyc_completed so the frontend can immediately route
+  // to /school-kyc or /dashboard without an extra /auth/me call. The
+  // kycCompleted flag drives the AuthContext + ProtectedRoute gate.
+  const { rows: tenantRows } = await db.query(`SELECT name, kyc_completed FROM tenants WHERE id = $1`, [user.tenant_id]);
+  const tenant = tenantRows[0];
+  res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, emailVerified: true, kycCompleted: !!tenant?.kyc_completed }, schoolName: tenant?.name || '' });
 }
 
 async function refresh(req, res) {
@@ -309,13 +317,15 @@ async function me(req, res) {
   const { rows: userRows } = await db.query(`SELECT id, name, email, role, tenant_id, twofa_enabled, email_verified FROM users WHERE id = $1`, [req.user.id]);
   const user = userRows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { rows: tenantRows } = await db.query(`SELECT name FROM tenants WHERE id = $1`, [user.tenant_id]);
+  // Pull kyc_completed from the tenant row so the frontend can gate the
+  // dashboard. Aliased as kycCompleted in the response for camelCase parity.
+  const { rows: tenantRows } = await db.query(`SELECT name, kyc_completed, kyc_completed_at FROM tenants WHERE id = $1`, [user.tenant_id]);
   const tenant = tenantRows[0];
   const { rows: termRows } = await db.query(`SELECT id, name FROM terms WHERE tenant_id = $1 AND is_current = 1`, [user.tenant_id]);
   const currentTerm = termRows[0];
   res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, twofaEnabled: !!user.twofa_enabled, emailVerified: !!user.email_verified },
-    tenant,
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, twofaEnabled: !!user.twofa_enabled, emailVerified: !!user.email_verified, kycCompleted: !!tenant?.kyc_completed },
+    tenant: { name: tenant?.name || '', kycCompleted: !!tenant?.kyc_completed, kycCompletedAt: tenant?.kyc_completed_at || null },
     currentTerm: currentTerm || null,
   });
 }
