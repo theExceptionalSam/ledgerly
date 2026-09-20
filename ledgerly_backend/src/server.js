@@ -64,6 +64,7 @@ const monitoringRoutes = require('./routes/monitoring.routes');
 const carryOverRoutes = require('./routes/carry-over.routes');
 const auditReportRoutes = require('./routes/audit-report.routes');
 const schoolKycRoutes = require('./routes/school-kyc.routes');
+const contingencyRoutes = require('./routes/contingency.routes');
 
 const app = express();
 
@@ -171,6 +172,7 @@ app.use('/api/v1/audit-report', auditReportRoutes);
 // being true; this endpoint lets the school submit the KYC form. Does NOT
 // require kyc_completed=true (it's the form that sets it), so no extra gate.
 app.use('/api/v1/school-kyc', schoolKycRoutes);
+app.use('/api/v1/contingency', contingencyRoutes);
 
 // Swagger UI — API documentation. Mounted after all routes so it doesn't
 // shadow any real /api/docs endpoint, and before the 404 handler so the UI

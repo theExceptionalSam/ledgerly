@@ -43,6 +43,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const AgedDebtors = lazy(() => import("./pages/AgedDebtors"));
 const BoardingReport = lazy(() => import("./pages/BoardingReport"));
+const ContingencyPlans = lazy(() => import("./pages/ContingencyPlans"));
 const Budgets = lazy(() => import("./pages/Budgets"));
 const Reconciliation = lazy(() => import("./pages/Reconciliation"));
 const Reversals = lazy(() => import("./pages/Reversals"));
@@ -194,6 +195,11 @@ export default function App() {
               <Route path="/reversals" element={
                 <ProtectedRoute roles={["owner"]}>
                   <Layout><Reversals /></Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/contingency" element={
+                <ProtectedRoute roles={["owner", "accountant"]}>
+                  <Layout><ContingencyPlans /></Layout>
                 </ProtectedRoute>
               } />
               {/* Platform admin — separate auth (no ProtectedRoute) */}

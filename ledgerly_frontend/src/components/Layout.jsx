@@ -182,6 +182,9 @@ export default function Layout({ children }) {
                   {isOwner && (
                     <NavLink to="/reversals" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Reversal Requests</NavLink>
                   )}
+                  {(isOwner || user.role === "accountant") && (
+                    <NavLink to="/contingency" onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? "nav-more-link active" : "nav-more-link"}>Contingency Planning</NavLink>
+                  )}
                 </div>
               )}
             </div>
@@ -256,6 +259,9 @@ export default function Layout({ children }) {
               <NavLink to="/reconciliation" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>End-of-Day Reconciliation</NavLink>
               {isOwner && (
                 <NavLink to="/reversals" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Reversal Requests</NavLink>
+              )}
+              {(isOwner || user.role === "accountant") && (
+                <NavLink to="/contingency" onClick={closeMenu} className={({ isActive }) => "app-nav-mobile-link" + (isActive ? " active" : "")}>Contingency Planning</NavLink>
               )}
             </div>
 
