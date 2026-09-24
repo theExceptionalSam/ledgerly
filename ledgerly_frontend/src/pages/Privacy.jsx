@@ -116,7 +116,7 @@ export default function Privacy() {
             </tr>
             <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
               <td style={{ padding: '8px' }}>Student records</td>
-              <td style={{ padding: '8px''>Until the school archives or deletes the student</td>
+              <td style={{ padding: '8px' }}>Until the school archives or deletes the student</td>
             </tr>
             <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
               <td style={{ padding: '8px' }}>KYC data</td>
