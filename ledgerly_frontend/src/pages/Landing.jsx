@@ -281,7 +281,7 @@ export default function Landing() {
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
           </div>
-          <p className="landing-footer-copy">© 2026 Ledgerly · Built for Nigerian schools · ledgerly-xi-ochre.vercel.app</p>
+          <p className="landing-footer-copy">© 2026 Ledgerly · Built for Nigerian schools · joinledgerly.com</p>
         </div>
       </footer>
     </div>
