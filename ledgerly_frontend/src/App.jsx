@@ -78,7 +78,7 @@ export default function App() {
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/school-kyc" element={
-                <ProtectedRoute>
+                <ProtectedRoute requireKyc={false}>
                   <SchoolKyc />
                 </ProtectedRoute>
               } />
