@@ -814,6 +814,7 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
   const [method, setMethod] = useState("cash");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
+  const [transactionId, setTransactionId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [savedPaymentIds, setSavedPaymentIds] = useState(null);
@@ -830,6 +831,7 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
   const submit = async () => {
     const valid = lines.filter((l) => l.feeHeadId && Number(l.amount) > 0);
     if (valid.length === 0) { setError("Add at least one payment line with a fee head and amount."); return; }
+    if (!transactionId.trim()) { setError("Transaction ID is required. Enter the bank transfer reference, POS receipt number, or cheque number."); return; }
     setBusy(true); setError("");
     try {
       const ids = [];
@@ -845,7 +847,8 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
           });
       for (const line of valid) {
         const r = await api.post("/payments", {
-          studentId: student.id, amount: Number(line.amount), method, note,
+          studentId: student.id, amount: Number(line.amount), method,
+          note: note ? `${note} [Txn ID: ${transactionId.trim()}]` : `[Txn ID: ${transactionId.trim()}]`,
           paidOn: date, feeHeadId: line.feeHeadId, termId,
           idempotencyKey: `${student.id}-${actionId}-${line.feeHeadId}`,
         });
@@ -918,6 +921,9 @@ function PaymentModal({ student, fees, termId, onClose, onReceipt, onEmailReceip
       <input id="payment-date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} autoComplete="off" />
       <label htmlFor="payment-note">Note (optional)</label>
       <input id="payment-note" name="note" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      <label htmlFor="payment-txn-id">Transaction ID *</label>
+      <input id="payment-txn-id" name="transactionId" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="e.g. TRF/2026/001 or POS-12345" autoComplete="off" required />
+      <div className="field-hint">Bank transfer reference, POS receipt number, or cheque number.</div>
       <button className="btn-primary btn-full" disabled={busy || fees.length === 0} onClick={submit}>
         {busy ? "Saving..." : "Save payment"}
       </button>
