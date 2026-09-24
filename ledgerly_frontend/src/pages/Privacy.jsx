@@ -1,11 +1,8 @@
 import { Link } from "react-router-dom";
 
-// NDPR-compliant Privacy Policy for Ledgerly — a Nigerian school fee tracker.
-// Public page at /privacy. Static content; updates require a code deploy.
-//
-// Covers: data collected, how it's used, retention, third-party processors
-// (Supabase, Render, Vercel, Paystack, Resend), user rights, and contact
-// for data protection enquiries.
+// NDPR-compliant Privacy Policy for Ledgerly.
+// Public page at /privacy. Covers: data collected (including KYC), how it's
+// used, retention, third-party processors, user rights, and contact.
 
 export default function Privacy() {
   return (
@@ -13,186 +10,204 @@ export default function Privacy() {
       <header className="legal-header">
         <img src="/ledgerly-logo-dark.jpg" alt="Ledgerly" className="auth-wordmark" width="180" height="52" fetchpriority="high" />
         <h1>Privacy Policy</h1>
-        <p className="legal-sub">Last updated: {new Date().getFullYear()}</p>
+        <p className="legal-sub">Last updated: September 2026</p>
       </header>
 
-      <Section title="1. Who we are">
-        <p>
-          Ledgerly ("we", "us", "our") is a school fee tracking and finance management service
-          operated from Nigeria. We help schools record student fees, accept online payments,
-          issue receipts, and report on collections. This Privacy Policy explains what data we
-          collect, why we collect it, and the rights you have over it under the Nigeria Data
-          Protection Regulation (NDPR) 2019 and the Nigeria Data Protection Act 2023.
-        </p>
-        <p>
-          By using Ledgerly, you (the school's owner, bursar, accountant, or assistant) and the
-          parents whose data you enter agree to the practices described here.
-        </p>
-      </Section>
+      <div className="legal-content">
+        <p>This Privacy Policy explains how Ledgerly ("we", "us", "our") collects, uses, stores, and protects your data. We operate in compliance with the Nigeria Data Protection Regulation (NDPR) 2019 and the Nigeria Data Protection Act 2023.</p>
 
-      <Section title="2. Data we collect">
-        <p>We collect and process the following categories of personal data:</p>
+        <h2>1. Data We Collect</h2>
+        <h3>1.1 School Registration Data</h3>
+        <p>When a school registers with Ledgerly, we collect:</p>
         <ul>
-          <li><strong>School information:</strong> school name, address, phone number, owner name, and email address.</li>
-          <li><strong>Staff account data:</strong> name, email, role, password hash, two-factor authentication secret, and login activity.</li>
-          <li><strong>Student records:</strong> name, class, admission number, and guardian contact (phone number).</li>
-          <li><strong>Parent portal accounts:</strong> name, phone number, password hash, and the students linked to the parent.</li>
-          <li><strong>Payment records:</strong> amount, method (cash, bank transfer, POS, cheque, online), date, fee head, receipt number, and (for online payments) the Paystack transaction reference.</li>
-          <li><strong>Usage data:</strong> IP address, browser user-agent, device type, and timestamps of API requests — used for security, audit, and abuse prevention.</li>
-          <li><strong>Optional branding data:</strong> if you upload a custom logo or set brand colours, those files are stored and served from our infrastructure.</li>
+          <li>School name, address, Local Government Area, and state</li>
+          <li>School registration number and registration type (CAC, Ministry of Education, etc.)</li>
+          <li>School type (day, boarding, mixed), education level, and year established</li>
+          <li>Approximate student count and classes offered</li>
+          <li>School motto, email, and website (optional)</li>
+          <li>Tax ID / TIN (optional)</li>
         </ul>
-        <p>
-          We do <strong>not</strong> collect biometric data, national identification numbers (NIN),
-          BVN, or information about students' academic performance beyond what is needed to bill fees.
-        </p>
-      </Section>
 
-      <Section title="3. How we use your data">
-        <p>We process personal data only for the following lawful purposes:</p>
+        <h3>1.2 User Account Data</h3>
+        <p>For each staff member (owner, bursar, accountant), we collect:</p>
         <ul>
-          <li>To create and manage your school's account, including staff logins and role-based permissions.</li>
-          <li>To record student fees, payments, discounts, and issue receipts.</li>
-          <li>To enable parents to view their child's outstanding fees and pay online via Paystack.</li>
-          <li>To generate financial reports, audit logs, and term summaries for school management.</li>
-          <li>To detect, prevent, and investigate fraud, abuse, or unauthorised access to your account.</li>
-          <li>To send service notifications (payment receipts, weekly summaries, subscription renewal reminders).</li>
-          <li>To comply with legal obligations, court orders, or requests from regulatory authorities.</li>
+          <li>Full name, email address, and phone number</li>
+          <li>Role (owner, bursar, accountant)</li>
+          <li>Hashed password (using bcrypt — we never store plain-text passwords)</li>
+          <li>Two-factor authentication secret (if enabled, stored encrypted)</li>
+          <li>Session data (IP address, user agent, login timestamps)</li>
         </ul>
-        <p>
-          We process data based on: (a) the performance of a contract with you (providing the service),
-          (b) our legitimate interests in securing and improving the service, and (c) your consent where
-          required (e.g. optional marketing communications, which you can opt out of at any time).
-        </p>
-      </Section>
 
-      <Section title="4. Data retention">
-        <p>
-          We retain personal data for as long as your school account is active. After account closure or
-          termination, we retain records for the following periods:
-        </p>
+        <h3>1.3 Student Data</h3>
+        <p>Schools enter the following data about their students:</p>
         <ul>
-          <li><strong>Payment records and receipts:</strong> 7 years, in line with Nigerian tax and accounting requirements.</li>
-          <li><strong>Audit logs:</strong> 7 years, to support forensic investigations.</li>
-          <li><strong>Student and parent records:</strong> deleted 90 days after account closure, unless a legal hold applies.</li>
-          <li><strong>Staff account data:</strong> deleted 90 days after the last user is removed.</li>
-          <li><strong>Refresh tokens and session data:</strong> deleted automatically 30 days after expiry.</li>
+          <li>Student name, class, admission number</li>
+          <li>Student type (day student or boarding student)</li>
+          <li>Guardian/parent contact (phone number and/or email)</li>
+          <li>Fee assignments (expected fees per term)</li>
+          <li>Payment records (amount, method, date, receipt number)</li>
+          <li>Discount information (if applicable)</li>
         </ul>
-        <p>
-          You may submit a data deletion request at any time — see Section 7 below. We honour requests
-          within 30 days, subject to the legal retention periods above.
-        </p>
-      </Section>
 
-      <Section title="5. Third-party processors">
-        <p>
-          We do not sell your data. We share it only with the following subprocessors who help us deliver
-          the service. Each processor is bound by data protection terms and processes data only on our
-          instructions:
-        </p>
+        <h3>1.4 Financial Data</h3>
+        <p>We collect and process:</p>
         <ul>
-          <li><strong>Supabase</strong> (supabase.com) — managed PostgreSQL database hosting. Stores all application data. Servers located in EU/US regions.</li>
-          <li><strong>Render</strong> (render.com) — backend application hosting. Runs our Node.js API servers.</li>
-          <li><strong>Vercel</strong> (vercel.com) — frontend application hosting. Serves the React web app to your browser.</li>
-          <li><strong>Paystack</strong> (paystack.com) — online payment processing. Receives payment amounts, references, and customer email/phone for transaction routing. Paystack is PCI-DSS compliant.</li>
-          <li><strong>Resend</strong> (resend.com) — transactional email delivery. Sends receipts, OTPs, and notification emails on our behalf.</li>
-          <li><strong>Termii</strong> (termii.com) — SMS and WhatsApp messaging. Sends parent payment confirmations and OTPs where applicable.</li>
-          <li><strong>Sentry</strong> (sentry.io) — error monitoring. Receives anonymised stack traces when the app crashes.</li>
+          <li>Fee payment records (amount, method, date)</li>
+          <li>Receipt numbers and receipt PDFs</li>
+          <li>Income and expenditure transactions</li>
+          <li>Bank reconciliation data (uploaded bank statements)</li>
+          <li>Budget and contingency planning data</li>
+          <li>Audit log entries (all actions taken in the system)</li>
         </ul>
-        <p>
-          We do not transfer personal data outside Nigeria except to the subprocessors listed above, whose
-          regions are noted. Where data leaves Nigeria, we rely on the lawful transfer mechanisms required
-          by the NDPR.
-        </p>
-      </Section>
 
-      <Section title="6. Security">
-        <p>
-          We protect personal data using industry-standard measures:
-        </p>
+        <h3>1.5 Parent Portal Data</h3>
+        <p>When parents use the Parent Portal, we collect:</p>
         <ul>
-          <li>Access tokens are kept in memory only (never in localStorage); refresh tokens are stored in httpOnly, Secure, SameSite=strict cookies.</li>
-          <li>Passwords are hashed with bcrypt (cost factor 12).</li>
-          <li>API keys are SHA-256 hashed at rest; the raw key is shown once at creation.</li>
-          <li>Two-factor authentication (TOTP) is available for all owner accounts.</li>
-          <li>All traffic between your browser and our servers is encrypted with TLS 1.2+.</li>
-          <li>Database access is restricted by IP allow-list and individual credentials with least privilege.</li>
+          <li>Phone number and name</li>
+          <li>Hashed password</li>
+          <li>Link to their child's student record</li>
         </ul>
-        <p>
-          No system is perfectly secure. In the event of a data breach affecting your rights, we will
-          notify the Nigerian Data Protection Commission and affected users without undue delay, and
-          in any case within 72 hours of becoming aware of the breach.
-        </p>
-      </Section>
 
-      <Section title="7. Your rights">
-        <p>Under the NDPR and NDP Act 2023, you have the right to:</p>
+        <h2>2. How We Use Your Data</h2>
+        <p>We use your data solely for the purpose of providing the Ledgerly service:</p>
         <ul>
-          <li><strong>Access</strong> — request a copy of the personal data we hold about you.</li>
-          <li><strong>Rectification</strong> — correct inaccurate or incomplete data.</li>
-          <li><strong>Erasure</strong> — request deletion of your data, subject to legal retention periods.</li>
-          <li><strong>Restriction</strong> — limit how we process your data while a dispute is resolved.</li>
-          <li><strong>Portability</strong> — receive your data in a structured, machine-readable format.</li>
-          <li><strong>Objection</strong> — object to processing based on legitimate interests.</li>
-          <li><strong>Withdraw consent</strong> — at any time, for processing that relies on your consent.</li>
+          <li>To record and track school fee payments</li>
+          <li>To generate and issue receipts</li>
+          <li>To produce financial reports (aged debtors, reconciliation, budgets, contingency plans)</li>
+          <li>To allow parents to view their child's fees and download receipts</li>
+          <li>To send email notifications (OTP codes, weekly summaries, payment receipts)</li>
+          <li>To maintain an audit trail for financial integrity</li>
+          <li>To verify the identity of schools (KYC) for regulatory compliance</li>
+          <li>To prevent fraud and unauthorized access</li>
         </ul>
-        <p>
-          To exercise any of these rights, email <a href="mailto:privacy@ledgerly.app">privacy@ledgerly.app</a>.
-          We respond within 30 days. If you're not satisfied with our response, you may complain to the
-          Nigeria Data Protection Commission at <a href="https://ndpc.gov.ng" target="_blank" rel="noopener noreferrer">ndpc.gov.ng</a>.
-        </p>
-      </Section>
+        <p>We do NOT:</p>
+        <ul>
+          <li>Sell your data to third parties</li>
+          <li>Use your data for advertising</li>
+          <li>Share student data with third parties without the school's consent</li>
+          <li>Use student data for any purpose other than fee management</li>
+        </ul>
 
-      <Section title="8. Cookies">
-        <p>
-          Ledgerly uses a single essential cookie (<code>refresh_token</code>) to keep you signed in
-          between page reloads. This cookie is httpOnly, Secure, and SameSite=strict — it cannot be read
-          by JavaScript or sent in cross-site requests. We do not use advertising or analytics cookies.
-        </p>
-      </Section>
+        <h2>3. Legal Basis for Processing</h2>
+        <p>We process your data based on:</p>
+        <ul>
+          <li><strong>Contract:</strong> Processing is necessary to provide the service you signed up for</li>
+          <li><strong>Legal obligation:</strong> NDPR requires us to maintain records of data processed</li>
+          <li><strong>Legitimate interest:</strong> Audit logs and security measures protect your data</li>
+          <li><strong>Consent:</strong> Parents consent to their data being used when they register for the Parent Portal</li>
+        </ul>
 
-      <Section title="9. Children's data">
-        <p>
-          Ledgerly is used by schools to record information about students, who may be children. We do
-          not collect data directly from children — all student data is entered by the school. Parents
-          may access their child's fee and payment records through the parent portal after verifying
-          their phone number against the school's guardian contact record.
-        </p>
-      </Section>
+        <h2>4. Data Retention</h2>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #E4E3DD' }}>
+              <th style={{ textAlign: 'left', padding: '8px' }}>Data Type</th>
+              <th style={{ textAlign: 'left', padding: '8px' }}>Retention Period</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>Payment records and receipts</td>
+              <td style={{ padding: '8px' }}>7 years (Nigerian tax law requirement)</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>Audit logs</td>
+              <td style={{ padding: '8px' }}>7 years</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>Student records</td>
+              <td style={{ padding: '8px''>Until the school archives or deletes the student</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>KYC data</td>
+              <td style={{ padding: '8px' }}>Duration of the account + 2 years</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>Session tokens</td>
+              <td style={{ padding: '8px' }}>30 days (then automatically deleted)</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #E4E3DD' }}>
+              <td style={{ padding: '8px' }}>Deleted account data</td>
+              <td style={{ padding: '8px' }}>30-day grace period, then permanently deleted</td>
+            </tr>
+          </tbody>
+        </table>
 
-      <Section title="10. Changes to this policy">
-        <p>
-          We may update this Privacy Policy from time to time. We will notify you of material changes
-          by email and by posting a banner in the app at least 30 days before the change takes effect.
-          Continued use after the effective date constitutes acceptance of the updated policy.
-        </p>
-      </Section>
+        <h2>5. Data Security</h2>
+        <p>We protect your data using industry-standard security measures:</p>
+        <ul>
+          <li><strong>Encryption in transit:</strong> All data is transmitted over HTTPS (TLS 1.2+)</li>
+          <li><strong>Encryption at rest:</strong> The database is encrypted by our hosting provider (Supabase)</li>
+          <li><strong>Password hashing:</strong> Passwords are hashed using bcrypt with a cost factor of 12</li>
+          <li><strong>Row-Level Security:</strong> Database-level isolation prevents cross-tenant data access</li>
+          <li><strong>Rate limiting:</strong> Brute-force protection with account lockout after 5 failed attempts</li>
+          <li><strong>Two-factor authentication:</strong> Available for all staff accounts</li>
+          <li><strong>Audit trail:</strong> Every action is logged immutably</li>
+          <li><strong>Regular security audits:</strong> We run automated vulnerability scans (npm audit)</li>
+        </ul>
 
-      <Section title="11. Contact our Data Protection Officer">
-        <p>
-          For any privacy-related question, request, or complaint, contact our Data Protection Officer:
-        </p>
-        <p>
-          <strong>Email:</strong> <a href="mailto:privacy@ledgerly.app">privacy@ledgerly.app</a><br />
-          <strong>Postal:</strong> Ledgerly Data Protection, Lagos, Nigeria
-        </p>
-      </Section>
+        <h2>6. Third-Party Processors</h2>
+        <p>We use the following third-party services to operate Ledgerly. Each provider has their own privacy policy and complies with applicable data protection laws.</p>
+        <ul>
+          <li><strong>Supabase</strong> (supabase.com) — PostgreSQL database hosting. Stores all application data. Servers located in EU (Ireland).</li>
+          <li><strong>Render</strong> (render.com) — Backend application hosting. Runs the API server. Servers located in US (Oregon).</li>
+          <li><strong>Vercel</strong> (vercel.com) — Frontend application hosting. Serves the web app. Global CDN.</li>
+          <li><strong>Resend</strong> (resend.com) — Transactional email delivery. Sends OTP codes, receipts, and weekly summaries.</li>
+          <li><strong>Paystack</strong> (paystack.com) — Online payment processing. Processes parent payments (when enabled). PCI-DSS compliant.</li>
+          <li><strong>Sentry</strong> (sentry.io) — Error monitoring. Receives anonymized stack traces when the app crashes. No user data is sent.</li>
+          <li><strong>Namecheap</strong> (namecheap.com) — Domain registration and DNS management.</li>
+        </ul>
 
-      <div className="legal-footer-nav">
-        <Link to="/terms">Terms of Service</Link>
-        <span>·</span>
-        <Link to="/pricing">Pricing</Link>
-        <span>·</span>
-        <Link to="/login">Sign in</Link>
+        <h2>7. Your Rights (NDPR)</h2>
+        <p>Under the Nigeria Data Protection Regulation, you have the right to:</p>
+        <ul>
+          <li><strong>Access:</strong> Request a copy of your personal data (use the Data Export feature in Settings)</li>
+          <li><strong>Rectification:</strong> Correct inaccurate or incomplete data</li>
+          <li><strong>Erasure:</strong> Request deletion of your data (use the Data Deletion feature in Settings)</li>
+          <li><strong>Portability:</strong> Export your data in a machine-readable format (JSON export available)</li>
+          <li><strong>Objection:</strong> Object to processing of your data for specific purposes</li>
+          <li><strong>Withdraw consent:</strong> Withdraw consent for processing at any time</li>
+        </ul>
+        <p>To exercise these rights, contact us at: <strong>joinledgerly.com/contact</strong> or call <strong>0807 323 1954</strong>.</p>
+
+        <h2>8. Data Breach Notification</h2>
+        <p>In the event of a data breach, we will:</p>
+        <ul>
+          <li>Notify affected users within 72 hours of becoming aware of the breach</li>
+          <li>Notify the Nigerian Data Protection Commission (NDPC) as required by law</li>
+          <li>Take immediate steps to contain and remediate the breach</li>
+          <li>Provide affected users with recommendations to protect themselves</li>
+        </ul>
+
+        <h2>9. Children's Data</h2>
+        <p>Ledgerly stores data about students (who may be children), but this data is entered and managed by the school. We do not directly collect data from children. Schools are responsible for obtaining parental consent for data processing as required by NDPR.</p>
+
+        <h2>10. International Data Transfers</h2>
+        <p>Your data is stored on servers located in the EU (Supabase, Ireland) and the US (Render, Oregon; Vercel, global CDN). We ensure appropriate safeguards are in place for international data transfers in compliance with NDPR requirements.</p>
+
+        <h2>11. Cookies</h2>
+        <p>Ledgerly uses essential cookies only:</p>
+        <ul>
+          <li><strong>Refresh token cookie:</strong> HttpOnly, Secure, SameSite=None. Used to keep you logged in. Expires after 30 days.</li>
+          <li><strong>Parent refresh token cookie:</strong> Same as above, for parent portal sessions.</li>
+        </ul>
+        <p>We do NOT use analytics cookies, advertising cookies, or tracking pixels.</p>
+
+        <h2>12. Changes to This Policy</h2>
+        <p>We may update this Privacy Policy from time to time. We will notify users of significant changes via email or in-app notification. The "Last updated" date at the top of this page indicates when the policy was last revised.</p>
+
+        <h2>13. Contact</h2>
+        <p>For privacy enquiries, data protection requests, or to report a privacy concern:</p>
+        <ul>
+          <li>Phone: <strong>0807 323 1954</strong></li>
+          <li>Email: <strong>noreply@joinledgerly.com</strong></li>
+          <li>Website: <strong>joinledgerly.com</strong></li>
+        </ul>
+
+        <div style={{ marginTop: 40 }}>
+          <Link to="/" className="btn-ghost">← Back to home</Link>
+        </div>
       </div>
     </div>
-  );
-}
-
-function Section({ title, children }) {
-  return (
-    <section className="legal-section">
-      <h2>{title}</h2>
-      {children}
-    </section>
   );
 }
